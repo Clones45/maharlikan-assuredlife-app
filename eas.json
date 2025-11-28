@@ -1,0 +1,25 @@
+{
+  "cli": {
+    "version": ">= 3.0.0"
+  },
+  "build": {
+    "preview": {
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "production": {
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://maharlikanassuredlife.com",
+        "EXPO_UPDATES_CHECK_ON_LAUNCH": "ALWAYS",
+        "EXPO_UPDATES_FALLBACK_TO_CACHE_TIMEOUT": "0"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

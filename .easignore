@@ -1,0 +1,58 @@
+# === .easignore — Optimize EAS Build Uploads ===
+
+# Node dependencies (EAS will reinstall fresh)
+node_modules
+
+# Local cache & logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+.expo
+.expo-shared
+.expo/web
+.cache
+.tmp
+dist
+build
+output
+
+# System & editor files
+.DS_Store
+Thumbs.db
+.idea
+.vscode
+*.iml
+
+# Test and demo files
+__tests__/
+test/
+coverage/
+examples/
+docs/
+
+# Android / iOS build outputs
+android/app/build/
+android/.gradle/
+android/.idea/
+android/local.properties
+ios/build/
+ios/Pods/
+ios/.idea/
+
+# Environment files (don’t upload secrets)
+.env
+.env.local
+.env.production
+.env.development
+
+# macOS/Linux specific
+*.swp
+*.swo
+*.tmp
+
+# Backup or old files
+*.bak
+*.old
+*.orig
+*.rej
