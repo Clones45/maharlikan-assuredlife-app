@@ -8,7 +8,7 @@ const BackButton: React.FC = () => {
 
   return (
     <TouchableOpacity onPress={() => router.back()} style={{ paddingHorizontal: 12 }}>
-      <Text style={{ color: '#1f6feb', fontWeight: '700' }}>← Back</Text>
+      <Text style={{ color: '#1f6feb', fontWeight: '700' }}>Back</Text>
     </TouchableOpacity>
   );
 };

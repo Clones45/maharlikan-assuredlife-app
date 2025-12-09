@@ -9,6 +9,7 @@
       }
     },
     "production": {
+      "channel": "production",
       "android": {
         "buildType": "apk"
       },
@@ -16,6 +17,12 @@
         "EXPO_PUBLIC_API_URL": "https://maharlikanassuredlife.com",
         "EXPO_UPDATES_CHECK_ON_LAUNCH": "ALWAYS",
         "EXPO_UPDATES_FALLBACK_TO_CACHE_TIMEOUT": "0"
+      }
+    },
+    "release": {
+      "extends": "production",
+      "android": {
+        "buildType": "app-bundle"
       }
     }
   },

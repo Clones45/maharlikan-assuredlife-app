@@ -7,11 +7,13 @@ import {
   ActivityIndicator,
   Alert,
   Platform,
+  StyleSheet,
 } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import { useLocalSearchParams, router } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { supabase } from "../../../lib/supabase";
+import { memorialColors, memorialSpacing, memorialBorderRadius, memorialFonts, memorialShadows } from "../../../constants/memorialTheme";
 
 /* ---------------- Helper ---------------- */
 const peso = (n: any) =>
@@ -147,158 +149,89 @@ export default function PublicSOA() {
   /* ---------------- UI ---------------- */
   return (
     <ScrollView
-      style={{ flex: 1, backgroundColor: "#f1f5fb" }}
-      contentContainerStyle={{ padding: 16 }}
+      style={s.page}
+      contentContainerStyle={{ padding: memorialSpacing.lg }}
     >
       {/* 🔹 Header Banner */}
-      <View
-        style={{
-          alignItems: "center",
-          backgroundColor: "#0b4aa2",
-          paddingVertical: 18,
-          borderRadius: 10,
-          marginBottom: 16,
-          elevation: 2,
-        }}
-      >
-        <Text
-          style={{
-            color: "#fff",
-            fontSize: 20,
-            fontWeight: "800",
-            letterSpacing: 0.5,
-          }}
-        >
+      <View style={s.headerBanner}>
+        <Text style={s.headerTitle}>
           Maharlikan AssuredLife
         </Text>
-        <Text
-          style={{
-            color: "#dbeafe",
-            fontSize: 13,
-            fontWeight: "500",
-            marginTop: 2,
-          }}
-        >
+        <Text style={s.headerSubtitle}>
           Your Simple way to Prepare!
         </Text>
       </View>
 
       {/* 🔹 Title */}
-      <Text
-        style={{
-          fontSize: 20,
-          fontWeight: "800",
-          color: "#0a3478",
-          textAlign: "center",
-          marginBottom: 14,
-        }}
-      >
+      <Text style={s.pageTitle}>
         Statement of Account
       </Text>
 
       {loading ? (
-        <ActivityIndicator size="large" color="#004aad" style={{ marginTop: 40 }} />
+        <ActivityIndicator size="large" color={memorialColors.primary} style={{ marginTop: 40 }} />
       ) : (
         member && (
-          <View
-            style={{
-              backgroundColor: "#fff",
-              borderRadius: 12,
-              padding: 16,
-              shadowColor: "#000",
-              shadowOpacity: 0.08,
-              shadowRadius: 4,
-              elevation: 2,
-            }}
-          >
-            <Text style={{ fontWeight: "700", fontSize: 16, color: "#0a1f44", marginBottom: 4 }}>
-              AF No: {member.maf_no}
+          <View style={s.card}>
+            <Text style={s.memberInfo}>
+              <Text style={s.label}>AF No: </Text>
+              {member.maf_no}
             </Text>
-            <Text style={{ color: "#333", marginBottom: 2 }}>
-              <Text style={{ fontWeight: "700" }}>Name: </Text>
+            <Text style={s.memberInfo}>
+              <Text style={s.label}>Name: </Text>
               {member.first_name} {member.last_name}
             </Text>
-            <Text style={{ color: "#333", marginBottom: 2 }}>
-              <Text style={{ fontWeight: "700" }}>Plan: </Text>
+            <Text style={s.memberInfo}>
+              <Text style={s.label}>Plan: </Text>
               {member.plan_type}
             </Text>
-            <Text style={{ color: "#333", marginBottom: 2 }}>
-              <Text style={{ fontWeight: "700" }}>Address: </Text>
+            <Text style={s.memberInfo}>
+              <Text style={s.label}>Address: </Text>
               {member.address}
             </Text>
-            <Text style={{ color: "#333" }}>
-              <Text style={{ fontWeight: "700" }}>Balance: </Text>
+            <Text style={s.memberInfo}>
+              <Text style={s.label}>Balance: </Text>
               {peso(balance)}
             </Text>
 
             {/* 🔹 Summary Section */}
-            <View style={{ marginTop: 20 }}>
-              <Text style={{ fontWeight: "700", fontSize: 16, color: "#0a1f44", marginBottom: 6 }}>
+            <View style={{ marginTop: memorialSpacing.xl }}>
+              <Text style={s.sectionTitle}>
                 Summary
               </Text>
-              <View
-                style={{
-                  borderWidth: 1,
-                  borderColor: "#d0d7e2",
-                  borderRadius: 10,
-                  overflow: "hidden",
-                }}
-              >
-                <View style={{ flexDirection: "row", backgroundColor: "#004aad", padding: 8 }}>
+              <View style={s.tableContainer}>
+                <View style={s.tableHeader}>
                   {["Contracted Price", "Total Paid", "Installment Paid", "Balance"].map((h) => (
-                    <Text
-                      key={h}
-                      style={{
-                        flex: 1,
-                        color: "#fff",
-                        fontWeight: "700",
-                        fontSize: 12,
-                        textAlign: "center",
-                      }}
-                    >
+                    <Text key={h} style={s.tableHeaderText}>
                       {h}
                     </Text>
                   ))}
                 </View>
-                <View style={{ flexDirection: "row", padding: 10 }}>
-                  <Text style={{ flex: 1, textAlign: "center", color: "#222" }}>{peso(price)}</Text>
-                  <Text style={{ flex: 1, textAlign: "center", color: "#222" }}>
-                    {peso(totalPaid)}
-                  </Text>
-                  <Text style={{ flex: 1, textAlign: "center", color: "#222" }}>
-                    {installmentPaid.toFixed(2)} mo.
-                  </Text>
-                  <Text style={{ flex: 1, textAlign: "center", color: "#222" }}>{peso(balance)}</Text>
+                <View style={s.tableRow}>
+                  <Text style={s.tableCell}>{peso(price)}</Text>
+                  <Text style={s.tableCell}>{peso(totalPaid)}</Text>
+                  <Text style={s.tableCell}>{installmentPaid.toFixed(2)} mo.</Text>
+                  <Text style={s.tableCell}>{peso(balance)}</Text>
                 </View>
               </View>
             </View>
 
             {/* 🔹 Month Selector */}
             {months.length > 0 && (
-              <View style={{ marginTop: 24 }}>
-                <Text style={{ fontWeight: "700", color: "#0a1f44", marginBottom: 6 }}>
+              <View style={{ marginTop: memorialSpacing.xl }}>
+                <Text style={s.sectionTitle}>
                   Select Month to View:
                 </Text>
-                <View
-                  style={{
-                    borderWidth: 1,
-                    borderColor: "#ccc",
-                    borderRadius: 10,
-                    backgroundColor: "#f9fafc",
-                    overflow: "hidden",
-                  }}
-                >
+                <View style={s.pickerContainer}>
                   <Picker
                     selectedValue={selectedMonth}
                     onValueChange={(v: string) => setSelectedMonth(v)}
                     style={{
                       height: Platform.OS === "ios" ? 160 : 50,
-                      fontSize: 14,
-                      color: "#222",
+                      color: memorialColors.black,
                     }}
                   >
                     {months.map((m) => (
-                      <Picker.Item key={m} label={m} value={m} />
+                      <Picker.Item key={m} label={m} value={m} color={memorialColors.black} />
                     ))}
                   </Picker>
                 </View>
@@ -307,36 +240,14 @@ export default function PublicSOA() {
 
             {/* 🔹 Transactions */}
             {selectedMonth && (
-              <View style={{ marginTop: 24 }}>
-                <Text
-                  style={{
-                    fontWeight: "700",
-                    fontSize: 16,
-                    color: "#0a1f44",
-                    marginBottom: 8,
-                  }}
-                >
+              <View style={{ marginTop: memorialSpacing.xl }}>
+                <Text style={s.sectionTitle}>
                   {selectedMonth} Transactions
                 </Text>
 
-                <View
-                  style={{
-                    flexDirection: "row",
-                    backgroundColor: "#004aad",
-                    paddingVertical: 6,
-                  }}
-                >
+                <View style={s.tableHeader}>
                   {["Date", "OR No.", "Payment", "Plan Type", "Payment For"].map((h) => (
-                    <Text
-                      key={h}
-                      style={{
-                        flex: 1,
-                        color: "#fff",
-                        fontWeight: "700",
-                        textAlign: "center",
-                        fontSize: 12,
-                      }}
-                    >
+                    <Text key={h} style={s.tableHeaderText}>
                       {h}
                     </Text>
                   ))}
@@ -346,33 +257,20 @@ export default function PublicSOA() {
                   visibleTxns.map((p, i) => (
                     <View
                       key={i}
-                      style={{
-                        flexDirection: "row",
-                        backgroundColor: i % 2 === 0 ? "#f9fafc" : "#fff",
-                        paddingVertical: 8,
-                        borderBottomWidth: 1,
-                        borderColor: "#e5e7eb",
-                      }}
+                      style={[
+                        s.tableRow,
+                        i % 2 === 0 ? { backgroundColor: memorialColors.pearl } : { backgroundColor: memorialColors.white }
+                      ]}
                     >
-                      <Text style={{ flex: 1, textAlign: "center", color: "#222" }}>
-                        {formatDate(p.date_paid)}
-                      </Text>
-                      <Text style={{ flex: 1, textAlign: "center", color: "#222" }}>
-                        {p.or_no || "-"}
-                      </Text>
-                      <Text style={{ flex: 1, textAlign: "center", color: "#222" }}>
-                        {peso(p.payment)}
-                      </Text>
-                      <Text style={{ flex: 1, textAlign: "center", color: "#222" }}>
-                        {p.plan_type || "-"}
-                      </Text>
-                      <Text style={{ flex: 1, textAlign: "center", color: "#222" }}>
-                        {p.payment_for || "-"}
-                      </Text>
+                      <Text style={s.tableCell}>{formatDate(p.date_paid)}</Text>
+                      <Text style={s.tableCell}>{p.or_no || "-"}</Text>
+                      <Text style={s.tableCell}>{peso(p.payment)}</Text>
+                      <Text style={s.tableCell}>{p.plan_type || "-"}</Text>
+                      <Text style={s.tableCell}>{p.payment_for || "-"}</Text>
                     </View>
                   ))
                 ) : (
-                  <Text style={{ marginTop: 10, textAlign: "center", color: "#777" }}>
+                  <Text style={s.emptyText}>
                     No transactions for this month.
                   </Text>
                 )}
@@ -385,30 +283,154 @@ export default function PublicSOA() {
       {/* 🔹 Back Button */}
       <TouchableOpacity
         onPress={() => router.push("/lookup")}
-        style={{
-          marginTop: 24,
-          borderWidth: 1,
-          borderColor: "#004aad",
-          paddingVertical: 12,
-          borderRadius: 10,
-          backgroundColor: "#fff",
-          shadowColor: "#000",
-          shadowOpacity: 0.08,
-          shadowRadius: 3,
-          elevation: 2,
-        }}
+        style={s.backButton}
       >
-        <Text
-          style={{
-            color: "#004aad",
-            textAlign: "center",
-            fontWeight: "700",
-            fontSize: 15,
-          }}
-        >
-          ← Back to Search
+        <Text style={s.backButtonText}>
+          Back to Search
         </Text>
       </TouchableOpacity>
     </ScrollView>
   );
 }
+
+/* ==================== STYLES ==================== */
+
+const s = StyleSheet.create({
+  page: {
+    flex: 1,
+    backgroundColor: memorialColors.primary, // Luxurious Green Background
+  },
+
+  headerBanner: {
+    alignItems: "center",
+    backgroundColor: memorialColors.white,
+    paddingVertical: memorialSpacing.lg,
+    borderRadius: memorialBorderRadius.lg,
+    marginBottom: memorialSpacing.lg,
+    ...memorialShadows.lg,
+    borderWidth: 1,
+    borderColor: memorialColors.gold,
+  },
+
+  headerTitle: {
+    color: memorialColors.primary,
+    fontSize: memorialFonts.xl,
+    fontWeight: memorialFonts.bold,
+    letterSpacing: memorialFonts.letterSpacing.wide,
+  },
+
+  headerSubtitle: {
+    color: memorialColors.goldDark,
+    fontSize: memorialFonts.sm,
+    fontWeight: memorialFonts.medium,
+    marginTop: 2,
+    fontStyle: "italic",
+  },
+
+  pageTitle: {
+    fontSize: memorialFonts.xl,
+    fontWeight: memorialFonts.bold,
+    color: memorialColors.white, // White text on green bg
+    textAlign: "center",
+    marginBottom: memorialSpacing.lg,
+    letterSpacing: memorialFonts.letterSpacing.wide,
+  },
+
+  // 💎 LUXURIOUS: Premium Card
+  card: {
+    backgroundColor: memorialColors.white,
+    borderRadius: memorialBorderRadius.xl,
+    padding: memorialSpacing.lg,
+    ...memorialShadows.xl,
+    borderWidth: 2,
+    borderColor: memorialColors.gold,
+  },
+
+  memberInfo: {
+    color: memorialColors.textSecondary,
+    marginBottom: memorialSpacing.xs,
+    fontSize: memorialFonts.md,
+  },
+
+  label: {
+    fontWeight: memorialFonts.bold,
+    color: memorialColors.primary,
+  },
+
+  sectionTitle: {
+    fontWeight: memorialFonts.bold,
+    fontSize: memorialFonts.lg,
+    color: memorialColors.primary,
+    marginBottom: memorialSpacing.sm,
+    letterSpacing: memorialFonts.letterSpacing.wide,
+  },
+
+  // Tables
+  tableContainer: {
+    borderWidth: 1,
+    borderColor: memorialColors.silver,
+    borderRadius: memorialBorderRadius.md,
+    overflow: "hidden",
+  },
+
+  tableHeader: {
+    flexDirection: "row",
+    backgroundColor: memorialColors.primary,
+    paddingVertical: memorialSpacing.sm,
+  },
+
+  tableHeaderText: {
+    flex: 1,
+    color: memorialColors.white,
+    fontWeight: memorialFonts.bold,
+    fontSize: memorialFonts.xs,
+    textAlign: "center",
+  },
+
+  tableRow: {
+    flexDirection: "row",
+    paddingVertical: memorialSpacing.sm,
+    borderBottomWidth: 1,
+    borderColor: memorialColors.silver,
+  },
+
+  tableCell: {
+    flex: 1,
+    textAlign: "center",
+    color: memorialColors.black,
+    fontSize: memorialFonts.xs,
+  },
+
+  // Picker
+  pickerContainer: {
+    borderWidth: 1,
+    borderColor: memorialColors.silver,
+    borderRadius: memorialBorderRadius.md,
+    backgroundColor: memorialColors.pearl,
+    overflow: "hidden",
+  },
+
+  emptyText: {
+    marginTop: memorialSpacing.md,
+    textAlign: "center",
+    color: memorialColors.textMuted,
+    fontStyle: "italic",
+  },
+
+  // Back Button
+  backButton: {
+    marginTop: memorialSpacing.xxl,
+    borderWidth: 1,
+    borderColor: memorialColors.white,
+    paddingVertical: memorialSpacing.lg,
+    borderRadius: memorialBorderRadius.md,
+    backgroundColor: "transparent",
+  },
+
+  backButtonText: {
+    color: memorialColors.white,
+    textAlign: "center",
+    fontWeight: memorialFonts.bold,
+    fontSize: memorialFonts.md,
+  },
+});

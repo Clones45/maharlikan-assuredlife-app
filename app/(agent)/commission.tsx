@@ -1,4 +1,3 @@
-// app/(agent)/commission.tsx
 import React, { useEffect, useState } from "react";
 import {
   View,
@@ -17,6 +16,8 @@ import { supabase } from "../../lib/supabase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Progress from "react-native-progress";
 import BackgroundLogo from "../../components/BackgroundLogo";
+import { memorialColors, memorialSpacing, memorialBorderRadius, memorialFonts, memorialShadows } from "../../constants/memorialTheme";
+import { useToast } from "../../components/ToastProvider";
 
 // ========================================
 // 🔵 TYPE DEFINITIONS
@@ -92,8 +93,8 @@ function cutoffRange(year: number, month: number) {
       d.getDate()
     ).padStart(2, "0")}`;
 
-  // Start = 6th of selected month
-  const start = new Date(Y, M - 1, 6);
+  // Start = 7th of selected month
+  const start = new Date(Y, M - 1, 7);
 
   // End = 7th of next month
   const end = new Date(Y, M, 7);
@@ -118,6 +119,7 @@ export default function AgentCommissions() {
   const [collections, setCollections] = useState<CollectionRow[]>([]);
   const [showCollections, setShowCollections] = useState<boolean>(true);
   const [customAmount, setCustomAmount] = useState<string>("");
+  const { showToast } = useToast();
 
   // ========================================
   // 🔵 INITIAL LOAD
@@ -146,8 +148,32 @@ export default function AgentCommissions() {
         setYear(now.getFullYear());
       }
 
-      const id = await AsyncStorage.getItem("agent_id");
-      setAgentId(id ? Number(id) : null);
+      // Robust Agent ID Retrieval
+      const { data: sessionData } = await supabase.auth.getUser();
+      const user_id = sessionData?.user?.id;
+
+      let finalAgentId = null;
+
+      // 1. Try Storage
+      const cached = await AsyncStorage.getItem("agent_id");
+      if (cached) {
+        finalAgentId = Number(cached);
+      } else if (user_id) {
+        // 2. Try DB
+        const { data: profile } = await supabase
+          .from("users_profile")
+          .select("agent_id")
+          .eq("user_id", user_id)
+          .maybeSingle();
+
+        if (profile?.agent_id) {
+          finalAgentId = profile.agent_id;
+          await AsyncStorage.setItem("agent_id", String(finalAgentId));
+        }
+      }
+
+      console.log("Initialized Commission Page. Agent ID:", finalAgentId);
+      setAgentId(finalAgentId);
 
       setIsInitializing(false);
     })();
@@ -170,7 +196,7 @@ export default function AgentCommissions() {
       // 0) Determine cutoff range (same as Electron)
       const { gte, lt } = cutoffRange(year, month);
 
-      // 1) Fetch exact rollup for this period
+      // 1) Fetch exact rollup for this period (for status only)
       const { data: rollup } = await supabase
         .from("agent_commission_rollups")
         .select("*")
@@ -179,86 +205,173 @@ export default function AgentCommissions() {
         .eq("period_year", year)
         .maybeSingle();
 
-      const row = rollup ? [rollup] : [];
-      if (rollup) {
-        rollup.corrected_total =
-          Number(rollup.monthly_commission) +
-          Number(rollup.membership_commission) +
-          Number(rollup.override_commission) +
-          Number(rollup.recruiter_bonus);
-      }
-      setData(row);
+      // 1.1) Fetch raw commissions for calculation (Desktop Parity)
+      // Added: is_receivable
+      console.log("Fetching commissions for:", { agentId, gte, lt });
+      const { data: rawComms, error: commError } = await supabase
+        .from("commissions")
+        .select("amount, commission_type, agent_id, override_commission, is_receivable")
+        .gte("date_earned", gte)
+        .lt("date_earned", lt);
 
-      // 2) Lifetime commission (non-withdrawable, from Nov 2025 onwards)
-      const { data: allRows } = await supabase
-        .from("agent_commission_rollups")
-        .select(
-          "period_year, period_month, monthly_commission, membership_commission, override_commission, recruiter_bonus"
-        )
-        .eq("agent_id", agentId)
-        .gte("period_year", 2025);
+      if (commError) console.error("Error fetching commissions:", commError);
 
-      const lifetime = (allRows || []).reduce((sum, r: any) => {
-        const isAfterStart =
-          r.period_year > 2025 ||
-          (r.period_year === 2025 && r.period_month >= 11);
+      // 1.2) Calculate totals clientside (STRICT DESKTOP LOGIC)
+      let calcMonthly = 0;
+      let calcTravel = 0; // New bucket from desktop
+      let calcOutright = 0;
+      let calcOverrides = 0;
+      let calcRecruiter = 0;
 
-        if (!isAfterStart) return sum;
+      let calcReceivable = 0;
+      let calcNonReceivable = 0;
+      let calcTotal = 0;
 
-        return (
-          sum +
-          (Number(r.monthly_commission) +
-            Number(r.membership_commission) +
-            Number(r.override_commission) +
-            Number(r.recruiter_bonus))
-        );
-      }, 0);
+      (rawComms || []).forEach((c: any) => {
+        if (c.agent_id !== agentId) return;
 
-      setLifetimeTotal(lifetime || 0);
+        const amount = Number(c.amount || 0);
+        const overrideAmount = Number(c.override_commission || 0);
+        const type = String(c.commission_type || "");
+        const isReceivable = c.is_receivable === true;
+
+        // RULE 5: OVERRIDES
+        if (type === "override" || type.startsWith("override_")) {
+          const val = (overrideAmount !== 0) ? overrideAmount : amount;
+          calcOverrides += val;
+          calcTotal += val;
+          calcReceivable += val; // Always Receivable
+          return;
+        }
+
+        // RULE 6: RECRUITER BONUS
+        if (type === "recruiter_bonus") {
+          calcRecruiter += amount;
+          calcTotal += amount;
+          calcReceivable += amount; // Always Receivable
+          return;
+        }
+
+        // RULE 3: MONTHLY COMMISSION
+        if (type === "plan_monthly" || type === "monthly") {
+          calcMonthly += amount;
+          calcTotal += amount;
+          if (isReceivable) calcReceivable += amount;
+          else calcNonReceivable += amount;
+          return;
+        }
+
+        // RULE 4: TRAVEL ALLOWANCE
+        if (type === "travel_allowance") {
+          calcTravel += amount;
+          calcTotal += amount;
+          if (isReceivable) calcReceivable += amount;
+          else calcNonReceivable += amount;
+          return;
+        }
+
+        // RULE 7: OUTRIGHT (Membership)
+        if (type === "membership_outright" || type.includes("membership")) {
+          calcOutright += amount;
+          calcTotal += amount;
+          if (isReceivable) calcReceivable += amount;
+          else calcNonReceivable += amount;
+          return;
+        }
+
+        // Fallback
+        calcTotal += amount;
+        if (isReceivable) calcReceivable += amount;
+        else calcNonReceivable += amount;
+      });
+
+      // 1.3) Construct the display object
+      // Note: mapping 'travel' + 'monthly' back to 'monthly_commission' to avoid breaking existing UI types immediately,
+      // BUT likely we should expose them if the UI tracks them.
+      // For now, I will map the calculated values to the existing rollup structure as best as possible.
+      // The user wants 'Desktop Parity', so I should probably update the UI to show these specific breakdowns too.
+      // Let's store them in the state or extended rollup.
+
+      const calculatedRollup: CommissionRollup = {
+        id: rollup?.id ?? 0,
+        agent_id: agentId,
+        period_year: year,
+        period_month: month,
+        monthly_commission: calcMonthly,    // Matches 'Monthly' in desktop
+        membership_commission: calcOutright,// Matches 'Outright' in desktop
+        override_commission: calcOverrides, // Matches 'Overrides' in desktop
+        recruiter_bonus: calcRecruiter,     // Matches 'Recruiter' in desktop
+        grand_total_commission: calcTotal,  // Matches 'Total Earned'
+        total_collection: 0,
+        status: rollup?.status ?? "unreleased",
+        corrected_total: calcTotal,
+
+        // Extended properties for the UI (we'll need to cast or extend the type if we want to be strict TS, 
+        // but for now we can attach them effectively)
+        travel_allowance: calcTravel,
+        receivable: calcReceivable,
+        non_receivable: calcNonReceivable
+      } as any; // Type assertion to allow new fields temporarily
+
+      setData([calculatedRollup]);
+
+      // 2) Lifetime commission (Now stored in DB)
+      // The trigger automatically updates agent_wallets.lifetime_commission
+      // We'll fetch it in the wallet query below.
+      // const { data: lifetimeRows } = await supabase... (REMOVED MANUAL CALC)
 
       // 3) Eligibility (Rule A OR Rule B using same-member logic)
-const { data: allColls } = await supabase
-  .from("collections")
-  .select("member_id, is_membership_fee, payment_for")
-  .eq("agent_id", agentId)
-  .gte("date_paid", gte)
-  .lt("date_paid", lt);
+      const { data: allColls } = await supabase
+        .from("collections")
+        .select("member_id, is_membership_fee, payment_for, payment")
+        .eq("agent_id", agentId)
+        .gte("date_paid", gte)
+        .lt("date_paid", lt);
 
-const list = allColls || [];
+      const list = allColls || [];
 
-// ---------- RULE A ----------
-const membershipCount = list.filter(x => x.is_membership_fee === true).length;
-setActiveCount(membershipCount); // progress bar update
-const ruleA = membershipCount >= 3;
+      // Calculate total collection client-side
+      const totalColl = list.reduce((sum, item) => sum + (Number(item.payment) || 0), 0);
 
-// ---------- RULE B (same member must pay membership + regular) ----------
-const memberMap: Record<number, any[]> = {};
-for (const p of list) {
-  if (!p.member_id) continue;
-  if (!memberMap[p.member_id]) memberMap[p.member_id] = [];
-  memberMap[p.member_id].push(p);
-}
+      // Update the data object with total collection
+      setData(prev => {
+        if (!prev[0]) return prev;
+        return [{ ...prev[0], total_collection: totalColl }];
+      });
 
-let ruleB = false;
-for (const memberId in memberMap) {
-  const payments = memberMap[memberId];
+      // ---------- RULE A ----------
+      const membershipCount = list.filter(x => x.is_membership_fee === true).length;
+      setActiveCount(membershipCount); // progress bar update
+      const ruleA = membershipCount >= 3;
 
-  const hasMembership = payments.some(p => p.is_membership_fee === true);
-  const hasRegular = payments.some(
-    p => p.is_membership_fee === false && p.payment_for === "regular"
-  );
+      // ---------- RULE B (same member must pay membership + regular) ----------
+      const memberMap: Record<number, any[]> = {};
+      for (const p of list) {
+        if (!p.member_id) continue;
+        if (!memberMap[p.member_id]) memberMap[p.member_id] = [];
+        memberMap[p.member_id].push(p);
+      }
 
-  if (hasMembership && hasRegular) {
-    ruleB = true;
-    break;
-  }
-}
+      let ruleB = false;
+      for (const memberId in memberMap) {
+        const payments = memberMap[memberId];
 
-// ---------- FINAL ELIGIBILITY ----------
-const eligibleNextMonth = ruleA || ruleB;
-setCanWithdraw(eligibleNextMonth);
+        const hasMembership = payments.some(p => p.is_membership_fee === true);
+        const hasRegular = payments.some(
+          p => p.is_membership_fee === false && p.payment_for === "regular"
+        );
 
-console.log("Eligibility:", { ruleA, ruleB, eligibleNextMonth });
+        if (hasMembership && hasRegular) {
+          ruleB = true;
+          break;
+        }
+      }
+
+      // ---------- FINAL ELIGIBILITY ----------
+      const eligibleNextMonth = ruleA || ruleB;
+      setCanWithdraw(eligibleNextMonth);
+
+      console.log("Eligibility:", { ruleA, ruleB, eligibleNextMonth });
 
 
 
@@ -325,20 +438,25 @@ console.log("Eligibility:", { ruleA, ruleB, eligibleNextMonth });
         setCollections(fixed);
       }
 
-      // 5) Wallet / withdrawable balance
+      // 5) Wallet / withdrawable balance + LIFETIME COMMISSION
       const { data: wallet, error: wErr } = await supabase
         .from("agent_wallets")
-        .select("balance")
+        .select("balance, lifetime_commission") // Added lifetime_commission
         .eq("agent_id", agentId)
         .maybeSingle();
 
       if (wErr) {
         console.error("Error loading wallet:", wErr);
         setWalletBalance(0);
+        setLifetimeTotal(0);
         setCanWithdraw(false);
       } else {
         const bal = Number(wallet?.balance || 0);
+        const life = Number(wallet?.lifetime_commission || 0);
+
         setWalletBalance(bal);
+        setLifetimeTotal(life);
+
         setCanWithdraw(bal >= 500); // rule: at least ₱500 to withdraw
       }
     } catch (err) {
@@ -450,12 +568,10 @@ console.log("Eligibility:", { ruleA, ruleB, eligibleNextMonth });
                 "Failed to process withdrawal. Please try again."
               );
             } else {
-              Alert.alert(
-                "Success",
-                `Withdrawal of ${peso(amount)} has been processed.`
-              );
               setCustomAmount("");
               await fetchCommissions();
+
+              showToast('success', 'Request Sent', `Withdrawal of ${peso(amount)} is now pending.`);
             }
           },
         },
@@ -482,7 +598,7 @@ console.log("Eligibility:", { ruleA, ruleB, eligibleNextMonth });
     <BackgroundLogo>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ alignItems: "center", paddingBottom: 40 }}
+        contentContainerStyle={{ alignItems: "center", paddingBottom: memorialSpacing.tabBarHeight }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
@@ -521,46 +637,103 @@ console.log("Eligibility:", { ruleA, ruleB, eligibleNextMonth });
             </View>
           </View>
 
-          {/* PROGRESS */}
-          <View style={styles.progressCard}>
-            <Text style={styles.progressTitle}>AGR Requirements</Text>
-            <Text style={{ fontSize: 12, color: "#000000ff", marginTop: 4 }}>
-            Have 3 card members OR 1 new member who will pay its Membership Fee AND its first MLAP payment.
-            </Text>
-            <Text style={{ fontWeight: "bold",fontSize: 12, color: "#38a322ff", marginTop: 4 }}>
-            If you complete our AGR Requirements you can automatically see and withdraw your available commission in the Withdrawable Balance.
-            </Text>
-            <Text style={{ fontWeight: "bold",fontSize: 14, color: "#750f08ff", marginTop: 4 }}>
-            NOTE: YOU CAN ONLY WITHDRAW WHEN YOU HAVE A MINIMUM BALANCE OF 500 PESOS.
-            </Text>
+          {/* 🎨 ENHANCED: Professional AGR Requirements Card */}
+          <View style={styles.requirementsCard}>
+            <View style={styles.cardHeaderRow}>
+              <Text style={styles.cardHeaderIcon}>📋</Text>
+              <Text style={styles.cardHeaderTitle}>AGR Requirements</Text>
+            </View>
+            <View style={styles.cardDivider} />
+
+            <View style={styles.requirementItem}>
+              <Text style={styles.requirementBullet}>•</Text>
+              <Text style={styles.requirementText}>
+                Have 3 card members OR 1 new member who pays Membership Fee + first MLAP payment
+              </Text>
+            </View>
+
+            <View style={styles.infoBox}>
+              <Text style={styles.infoIcon}>✓</Text>
+              <Text style={styles.infoText}>
+                Complete AGR Requirements to automatically access your withdrawable commission
+              </Text>
+            </View>
+
+            <View style={styles.warningBox}>
+              <Text style={styles.warningIcon}>⚠</Text>
+              <Text style={styles.warningText}>
+                Minimum withdrawal: ₱500.00
+              </Text>
+            </View>
           </View>
 
-          {/* COMMISSION SUMMARY CARD */}
+          {/* 🎨 ENHANCED: Professional Commission Summary */}
           {r ? (
-            <View style={styles.card}>
-              <Text style={styles.agentName}>Commission Summary</Text>
+            <View style={styles.summaryCard}>
+              <View style={styles.cardHeaderRow}>
+                <Text style={styles.cardHeaderIcon}>💰</Text>
+                <Text style={styles.cardHeaderTitle}>Commission Breakdown</Text>
+              </View>
+              <View style={styles.cardDivider} />
 
-              <Text style={{ fontWeight: "bold",fontSize: 14, color: "#092b88ff", marginTop: 4 }}>
+              <View style={styles.commissionRow}>
+                <Text style={styles.commissionLabel}>Monthly Commission</Text>
+                <Text style={styles.commissionValue}>{peso(r.monthly_commission)}</Text>
+              </View>
 
-                Monthly Commission: {peso(r.monthly_commission)}
-              
-              </Text>
+              <View style={styles.commissionRow}>
+                <Text style={styles.commissionLabel}>Travelling Allowance</Text>
+                <Text style={styles.commissionValue}>{peso((r as any).travel_allowance || 0)}</Text>
+              </View>
 
-              <Text style={{ fontWeight: "bold",fontSize: 14, color: "#092b88ff", marginTop: 4 }}>
-                Outright Commission: {peso(r.membership_commission)}
-              </Text>
-              <Text style={{ fontWeight: "bold",fontSize: 14, color: "#092b88ff", marginTop: 4 }}>
-                Override Commission: {peso(r.override_commission)}</Text>
-              <Text style={{ fontWeight: "bold",fontSize: 14, color: "#092b88ff", marginTop: 4 }}>
-                Recruiter Bonus: {peso(r.recruiter_bonus)}</Text>
+              <View style={styles.commissionRow}>
+                <Text style={styles.commissionLabel}>Outright Commission</Text>
+                <Text style={styles.commissionValue}>{peso(r.membership_commission)}</Text>
+              </View>
 
-              <Text style={styles.total}>
-                Grand Total: {peso(correctedTotal)}
-              </Text>
-              <Text style={{ fontWeight: "bold",fontSize: 14, color: "#000000ff", marginTop: 4 }}>
-                Total Collection: {peso(r.total_collection)}</Text>
-              <Text style={{ fontWeight: "bold",fontSize: 14, color: "#000000ff", marginTop: 4 }}>
-                Status: {r.status}</Text>
+              <View style={styles.commissionRow}>
+                <Text style={styles.commissionLabel}>Override Commission</Text>
+                <Text style={styles.commissionValue}>{peso(r.override_commission)}</Text>
+              </View>
+
+              <View style={styles.commissionRow}>
+                <Text style={styles.commissionLabel}>Recruiter Bonus</Text>
+                <Text style={styles.commissionValue}>{peso(r.recruiter_bonus)}</Text>
+              </View>
+
+              <View style={styles.totalDivider} />
+
+              <View style={styles.grandTotalRow}>
+                <Text style={styles.grandTotalLabel}>Grand Total</Text>
+                <Text style={styles.grandTotalValue}>{peso(correctedTotal)}</Text>
+              </View>
+
+              {/* NEW: Classification Breakdown from Desktop */}
+              <View style={{ marginTop: 16 }}>
+                <Text style={[styles.cardHeaderTitle, { fontSize: 14, marginBottom: 8 }]}>Classification</Text>
+
+                <View style={styles.commissionRow}>
+                  <Text style={[styles.commissionLabel, { color: '#94a3b8' }]}>Receivable (Unpaid + OR)</Text>
+                  <Text style={[styles.commissionValue, { color: '#4ade80' }]}>{peso((r as any).receivable || 0)}</Text>
+                </View>
+                <View style={styles.commissionRow}>
+                  <Text style={[styles.commissionLabel, { color: '#94a3b8' }]}>Non-Receivable (Paid)</Text>
+                  <Text style={[styles.commissionValue, { color: '#64748b' }]}>{peso((r as any).non_receivable || 0)}</Text>
+                </View>
+              </View>
+
+              <View style={styles.metaRow}>
+                <View style={styles.metaItem}>
+                  <Text style={styles.metaLabel}>Total Collection</Text>
+                  <Text style={styles.metaValue}>{peso(r.total_collection)}</Text>
+                </View>
+                {/* 
+                <View style={styles.metaItem}>
+                  <Text style={styles.metaLabel}>Status</Text>
+                  <Text style={[styles.metaValue, styles.statusBadge]}>{r.status}</Text>
+                </View> 
+                */}
+              </View>
             </View>
           ) : (
             <Text>No commission records.</Text>
@@ -610,19 +783,18 @@ console.log("Eligibility:", { ruleA, ruleB, eligibleNextMonth });
                     const m = c.members;
                     const memberName =
                       m && (m.last_name || m.first_name)
-                        ? `${(m.last_name || "").toUpperCase()}, ${
-                            m.first_name || ""
-                          }`
+                        ? `${(m.last_name || "").toUpperCase()}, ${m.first_name || ""
+                        }`
                         : c.member_id
-                        ? `Member #${c.member_id}`
-                        : "Unknown";
+                          ? `Member #${c.member_id}`
+                          : "Unknown";
 
                     const dateLabel = c.date_paid
                       ? new Date(c.date_paid).toLocaleDateString("en-PH", {
-                          year: "numeric",
-                          month: "2-digit",
-                          day: "2-digit",
-                        })
+                        year: "numeric",
+                        month: "2-digit",
+                        day: "2-digit",
+                      })
                       : "";
 
                     return (
@@ -665,7 +837,7 @@ console.log("Eligibility:", { ruleA, ruleB, eligibleNextMonth });
             </Text>
 
             <Text style={{ fontWeight: "700", marginTop: 10 }}>
-              Lifetime Commission (Not Withdrawable): {peso(lifetimeTotal)}
+              Lifetime Accumulated Commission (Not Withdrawable): {peso(lifetimeTotal)}
             </Text>
 
             <Text style={{ fontWeight: "700", marginTop: 6 }}>
@@ -720,84 +892,145 @@ console.log("Eligibility:", { ruleA, ruleB, eligibleNextMonth });
 }
 
 // ========================================
-// 🔵 STYLES
+// 💎 LUXURIOUS STYLES
 // ========================================
 const styles = StyleSheet.create({
   innerContainer: { width: "100%", maxWidth: 480 },
   center: { flex: 1, justifyContent: "center", alignItems: "center" },
 
+  // 💎 LUXURIOUS: Premium header
   topBar: {
     flexDirection: "row",
     justifyContent: "space-between",
-    padding: s(12),
-    backgroundColor: "#fff",
-    borderRadius: s(12),
+    padding: s(16),
+    backgroundColor: memorialColors.primary,
+    borderRadius: memorialBorderRadius.xl,
     marginTop: s(10),
     marginBottom: s(10),
+    ...memorialShadows.xl,
+    borderWidth: 2,
+    borderColor: memorialColors.gold,
   },
-  header: { fontSize: s(20), fontWeight: "700" },
+  header: {
+    fontSize: s(24),
+    fontWeight: memorialFonts.bold,
+    color: memorialColors.white,
+    letterSpacing: memorialFonts.letterSpacing.wide,
+  },
 
   actionBtn: {
-    backgroundColor: "#007aff",
-    width: s(40),
-    height: s(40),
-    borderRadius: s(20),
+    backgroundColor: memorialColors.gold,
+    width: s(44),
+    height: s(44),
+    borderRadius: s(22),
     justifyContent: "center",
     alignItems: "center",
+    ...memorialShadows.gold,
   },
-  actionText: { color: "#fff", fontSize: s(20), fontWeight: "700" },
+  actionText: {
+    color: memorialColors.black,
+    fontSize: s(22),
+    fontWeight: memorialFonts.bold,
+  },
 
+  // 🎨 VISUAL: Peaceful filter wrapper
   filterWrapper: {
     flexDirection: "row",
-    gap: s(10),
-    backgroundColor: "#fff",
+    backgroundColor: memorialColors.bgCard,
     padding: s(8),
-    borderRadius: s(12),
+    borderRadius: memorialBorderRadius.lg,
+    ...memorialShadows.sm,
+    borderWidth: 1,
+    borderColor: memorialColors.borderLight,
   },
   pickerBox: {
     flex: 1,
-    backgroundColor: "#f7f7f7",
-    borderRadius: s(10),
+    backgroundColor: memorialColors.cream,
+    borderRadius: memorialBorderRadius.md,
+    borderWidth: 1,
+    borderColor: memorialColors.border,
+    marginHorizontal: s(5), // Replaces gap
   },
 
+  // 🎨 VISUAL: Gentle progress card
   progressCard: {
-    backgroundColor: "#fff",
+    backgroundColor: memorialColors.bgCard,
     padding: s(12),
-    borderRadius: s(12),
+    borderRadius: memorialBorderRadius.lg,
     marginTop: s(10),
+    ...memorialShadows.md,
+    borderWidth: 1,
+    borderColor: memorialColors.borderLight,
   },
-  progressTitle: { fontWeight: "700", marginBottom: s(6) },
-  progressText: { textAlign: "right", marginTop: s(4), fontSize: s(12) },
+  progressTitle: {
+    fontWeight: memorialFonts.semibold,
+    marginBottom: s(6),
+    color: memorialColors.primary,
+    fontSize: s(16),
+  },
+  progressText: {
+    textAlign: "right",
+    marginTop: s(4),
+    fontSize: s(12),
+    color: memorialColors.textSecondary,
+  },
 
+  // 💎 LUXURIOUS: Premium commission cards
   card: {
-    backgroundColor: "#fff",
-    padding: s(14),
-    borderRadius: s(12),
-    marginTop: s(10),
+    backgroundColor: memorialColors.white,
+    padding: s(18),
+    borderRadius: memorialBorderRadius.xl,
+    marginTop: s(12),
+    ...memorialShadows.lg,
+    borderWidth: 1,
+    borderColor: memorialColors.silver,
   },
-  agentName: { fontSize: s(18), fontWeight: "700", marginBottom: s(6) },
-  total: { marginTop: s(6), fontWeight: "700", color: "#007aff" },
+  agentName: {
+    fontSize: s(18),
+    fontWeight: memorialFonts.bold,
+    marginBottom: s(6),
+    color: memorialColors.primary,
+  },
+  total: {
+    marginTop: s(6),
+    fontWeight: memorialFonts.bold,
+    color: memorialColors.primary,
+    fontSize: s(16),
+  },
 
+  // 💎 LUXURIOUS: Premium summary card with gold border
   summaryCard: {
-    backgroundColor: "#fff",
-    padding: s(14),
-    borderRadius: s(12),
+    backgroundColor: memorialColors.white,
+    padding: s(20),
+    borderRadius: memorialBorderRadius.xxl,
     marginTop: s(15),
     marginBottom: s(30),
-    borderWidth: 1,
-    borderColor: "#007aff",
+    borderWidth: 3,
+    borderColor: memorialColors.gold,
+    ...memorialShadows.xl,
   },
-  summaryTitle: { fontWeight: "700", fontSize: s(16), marginBottom: s(6) },
-  summaryTotal: { marginTop: s(4), fontWeight: "700", color: "#007aff" },
+  summaryTitle: {
+    fontWeight: memorialFonts.bold,
+    fontSize: s(16),
+    marginBottom: s(6),
+    color: memorialColors.primary,
+  },
+  summaryTotal: {
+    marginTop: s(4),
+    fontWeight: memorialFonts.bold,
+    color: memorialColors.primary,
+    fontSize: s(15),
+  },
 
   motivation: {
     marginTop: s(10),
     fontSize: s(12),
     textAlign: "center",
-    color: "#555",
+    color: memorialColors.textMuted,
+    fontStyle: "italic",
   },
 
-  // Collections styles
+  // 🎨 VISUAL: Peaceful collections section
   collectionsHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -805,64 +1038,254 @@ const styles = StyleSheet.create({
   },
   caret: {
     fontSize: s(16),
-    fontWeight: "700",
-    color: "#007aff",
+    fontWeight: memorialFonts.bold,
+    color: memorialColors.primary,
   },
   collectionHeaderRow: {
     flexDirection: "row",
     borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
+    borderBottomColor: memorialColors.paleGold,
     paddingBottom: s(4),
     marginBottom: s(4),
   },
   collectionHeaderText: {
     fontSize: s(12),
-    fontWeight: "700",
-    color: "#4b5563",
+    fontWeight: memorialFonts.semibold,
+    color: memorialColors.textSecondary,
   },
   collectionRow: {
     flexDirection: "row",
     paddingVertical: s(4),
+    borderBottomWidth: 1,
+    borderBottomColor: memorialColors.borderLight,
   },
   collectionCell: {
     fontSize: s(12),
-    color: "#111827",
+    color: memorialColors.textPrimary,
   },
   collectionEmpty: {
     fontSize: s(12),
-    color: "#6b7280",
+    color: memorialColors.textMuted,
     marginTop: s(6),
+    fontStyle: "italic",
   },
 
-  // Withdraw
+  // 🎨 VISUAL: Memorial-themed withdraw controls
   withdrawRow: {
     flexDirection: "row",
     alignItems: "center",
     marginTop: s(12),
-    gap: s(6),
   },
   withdrawBtnSmall: {
     paddingVertical: s(8),
     paddingHorizontal: s(10),
-    borderRadius: s(8),
+    borderRadius: memorialBorderRadius.md,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
+    ...memorialShadows.sm,
+    marginRight: s(6), // Replaces gap
   },
   withdrawSmallTxt: {
-    color: "#fff",
-    fontWeight: "700",
+    color: memorialColors.softWhite,
+    fontWeight: memorialFonts.semibold,
     fontSize: s(12),
   },
   amountInput: {
     flex: 1,
     paddingVertical: s(8),
     paddingHorizontal: s(8),
-    borderRadius: s(8),
+    borderRadius: memorialBorderRadius.md,
     borderWidth: 1,
-    borderColor: "#d1d5db",
-    backgroundColor: "#f9fafb",
+    borderColor: memorialColors.border,
+    backgroundColor: memorialColors.softWhite,
     fontSize: s(12),
-    color: "#111827",
+    color: memorialColors.textPrimary,
+  },
+
+  // 💎 LUXURIOUS: Premium requirements card
+  requirementsCard: {
+    backgroundColor: memorialColors.white,
+    padding: s(20),
+    borderRadius: memorialBorderRadius.xl,
+    marginTop: s(10),
+    ...memorialShadows.lg,
+    borderWidth: 2,
+    borderColor: memorialColors.primary,
+  },
+
+  cardHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: s(8),
+  },
+
+  cardHeaderIcon: {
+    fontSize: s(20),
+    marginRight: s(8),
+  },
+
+  cardHeaderTitle: {
+    fontSize: s(20),
+    fontWeight: memorialFonts.bold,
+    color: memorialColors.black,
+    letterSpacing: memorialFonts.letterSpacing.wide,
+  },
+
+  cardDivider: {
+    height: 2,
+    backgroundColor: memorialColors.gold,
+    marginBottom: s(12),
+  },
+
+  requirementItem: {
+    flexDirection: "row",
+    marginBottom: s(10),
+  },
+
+  requirementBullet: {
+    fontSize: s(16),
+    color: memorialColors.primary,
+    marginRight: s(8),
+    marginTop: s(2),
+  },
+
+  requirementText: {
+    flex: 1,
+    fontSize: s(13),
+    color: memorialColors.textPrimary,
+    lineHeight: s(18),
+  },
+
+  infoBox: {
+    flexDirection: "row",
+    backgroundColor: memorialColors.successLight,
+    padding: s(10),
+    borderRadius: memorialBorderRadius.md,
+    marginTop: s(8),
+    borderLeftWidth: 3,
+    borderLeftColor: memorialColors.success,
+  },
+
+  infoIcon: {
+    fontSize: s(16),
+    color: memorialColors.success,
+    marginRight: s(8),
+    fontWeight: memorialFonts.bold,
+  },
+
+  infoText: {
+    flex: 1,
+    fontSize: s(12),
+    color: memorialColors.success,
+    lineHeight: s(16),
+  },
+
+  warningBox: {
+    flexDirection: "row",
+    backgroundColor: memorialColors.warningLight,
+    padding: s(10),
+    borderRadius: memorialBorderRadius.md,
+    marginTop: s(8),
+    borderLeftWidth: 3,
+    borderLeftColor: memorialColors.warning,
+  },
+
+  warningIcon: {
+    fontSize: s(16),
+    color: memorialColors.warning,
+    marginRight: s(8),
+    fontWeight: memorialFonts.bold,
+  },
+
+  warningText: {
+    flex: 1,
+    fontSize: s(12),
+    color: memorialColors.warning,
+    fontWeight: memorialFonts.semibold,
+    lineHeight: s(16),
+  },
+
+  // Commission breakdown styles
+  commissionRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: s(8),
+    borderBottomWidth: 1,
+    borderBottomColor: memorialColors.borderLight,
+  },
+
+  commissionLabel: {
+    fontSize: s(14),
+    color: memorialColors.textSecondary,
+  },
+
+  commissionValue: {
+    fontSize: s(14),
+    fontWeight: memorialFonts.semibold,
+    color: memorialColors.textPrimary,
+  },
+
+  totalDivider: {
+    height: 3,
+    backgroundColor: memorialColors.gold,
+    marginVertical: s(12),
+  },
+
+  grandTotalRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingVertical: s(14),
+    backgroundColor: memorialColors.primary,
+    paddingHorizontal: s(16),
+    borderRadius: memorialBorderRadius.lg,
+    marginBottom: s(12),
+    ...memorialShadows.md,
+  },
+
+  grandTotalLabel: {
+    fontSize: s(18),
+    fontWeight: memorialFonts.bold,
+    color: memorialColors.white,
+    letterSpacing: memorialFonts.letterSpacing.wider,
+  },
+
+  grandTotalValue: {
+    fontSize: s(22),
+    fontWeight: memorialFonts.black,
+    color: memorialColors.gold,
+  },
+
+  metaRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    flexWrap: "wrap", // Allows wrapping on small screens
+  },
+
+  metaItem: {
+    flex: 1,
+    minWidth: 100, // Ensures readability on small screens
+    paddingHorizontal: s(6), // Replaces gap
+  },
+
+  metaLabel: {
+    fontSize: s(11),
+    color: memorialColors.textMuted,
+    marginBottom: s(4),
+  },
+
+  metaValue: {
+    fontSize: s(13),
+    fontWeight: memorialFonts.semibold,
+    color: memorialColors.textSecondary,
+  },
+
+  statusBadge: {
+    backgroundColor: memorialColors.successLight,
+    paddingHorizontal: s(8),
+    paddingVertical: s(4),
+    borderRadius: memorialBorderRadius.sm,
+    color: memorialColors.success,
+    overflow: "hidden",
   },
 });

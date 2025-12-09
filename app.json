@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Maharlikan AssuredLife",
-    "slug": "maharlikan-assuredlife",
+    "slug": "maharlikan-newapp",
     "scheme": "maharlikan-assuredlife",
     "version": "1.0.1",
     "orientation": "portrait",
@@ -11,46 +11,41 @@
     "assetBundlePatterns": [
       "**/*"
     ],
-
     "splash": {
       "image": "./assets/logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#E3F2FD"
     },
-
     "android": {
-      "package": "com.maharlikan.assuredlife",
-      "versionCode": 2,
+      "package": "com.maharlikan.newapp",
+      "versionCode": 4,
       "adaptiveIcon": {
         "foregroundImage": "./assets/logo.png",
         "backgroundColor": "#0D47A1"
       },
       "permissions": []
     },
-
     "plugins": [
       "expo-router",
       "expo-font",
       "expo-updates"
     ],
-
     "extra": {
       "SUPABASE_URL": "https://agyueadcymdopgihtckc.supabase.co",
       "SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFneXVlYWRjeW1kb3BnaWh0Y2tjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkzMzA2NjYsImV4cCI6MjA3NDkwNjY2Nn0.EBYfJ9RTkeGLQptG3uWaOsFMIz9DySu3uhaOlzgeeMw",
       "EDGE_LOGIN_NAME": "username-login",
       "router": {},
       "eas": {
-        "projectId": "4772ebc7-60cf-4336-8120-7cab160a6523"
+        "projectId": "2547e51b-c2b2-4517-978e-7954590653a2"
       }
     },
-
     "updates": {
       "enabled": true,
       "checkAutomatically": "ON_LOAD",
       "fallbackToCacheTimeout": 0,
       "url": "https://u.expo.dev/4772ebc7-60cf-4336-8120-7cab160a6523"
     },
-
-    "runtimeVersion": "appVersion"
+    "runtimeVersion": "appVersion",
+    "owner": "clydelian"
   }
 }

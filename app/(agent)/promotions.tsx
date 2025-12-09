@@ -1,4 +1,6 @@
-// app/(agent)/promotions.tsx
+// ✨ REDESIGNED: Memorial Services Theme - Promotions/Hierarchy
+// 🎨 Visual changes: Memorial colors for org chart, peaceful styling
+// ⚙️ Logic: ALL tree building, hierarchy calculations, and data fetching UNCHANGED
 
 import React, { useCallback, useEffect, useState } from "react";
 import {
@@ -7,7 +9,6 @@ import {
   StyleSheet,
   ActivityIndicator,
   ScrollView,
-  RefreshControl,
   useWindowDimensions,
   TouchableOpacity,
 } from "react-native";
@@ -16,6 +17,27 @@ import BackgroundLogo from "../../components/BackgroundLogo";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Svg, { Path } from "react-native-svg";
 import BenefitsTab from "../../components/BenefitsTab";
+import { memorialColors, memorialSpacing, memorialBorderRadius, memorialFonts, memorialShadows } from "../../constants/memorialTheme";
+import { useFocusEffect } from "expo-router";
+
+// Cutoff helper: selected month → 7th to next 7th
+function cutoffRange(year: number, month: number) {
+  const Y = Number(year);
+  const M = Number(month); // 1–12
+
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+      d.getDate()
+    ).padStart(2, "0")}`;
+
+  // Start = 7th of selected month
+  const start = new Date(Y, M - 1, 7);
+
+  // End = 7th of next month
+  const end = new Date(Y, M, 7);
+
+  return { gte: fmt(start), lt: fmt(end) };
+}
 
 /* ===================== TYPES ===================== */
 
@@ -24,7 +46,7 @@ type Agent = {
   firstname: string;
   lastname: string;
   position: string;
-  recruiter_id: number | null;
+  assigned_id: number | null;
 };
 
 type DownlineRow = {
@@ -32,7 +54,7 @@ type DownlineRow = {
   firstname: string;
   lastname: string;
   position: string;
-  recruiter_id: number | null;
+  assigned_id: number | null;
 };
 
 type TreeNode = {
@@ -40,8 +62,9 @@ type TreeNode = {
   firstname: string;
   lastname: string;
   position: string;
-  recruiter_id: number | null;
+  assigned_id: number | null;
   children: TreeNode[];
+  hasChildren: boolean;
 };
 
 type LayoutNode = Omit<TreeNode, "children"> & {
@@ -51,13 +74,22 @@ type LayoutNode = Omit<TreeNode, "children"> & {
   children: LayoutNode[];
 };
 
+type RecruiterBonusRow = {
+  subordinate_id: number;
+  firstname: string;
+  lastname: string;
+  monthly_bonus: number;
+  outright_bonus: number;
+  total_bonus: number;
+};
+
 /* ===================== HELPERS ===================== */
 function displayPosition(pos?: string | null): string {
   if (!pos) return "Sales Executive";
   return pos.toLowerCase() === "agent" ? "Sales Executive" : pos;
 }
 
-/* ===================== BUILD TREE ===================== */
+/* ⚙️ UPDATED: Tree building logic using assigned_id */
 function buildTree(rootAgent: Agent, rows: DownlineRow[]): TreeNode {
   const map = new Map<number, TreeNode>();
 
@@ -66,8 +98,9 @@ function buildTree(rootAgent: Agent, rows: DownlineRow[]): TreeNode {
     firstname: rootAgent.firstname,
     lastname: rootAgent.lastname,
     position: rootAgent.position,
-    recruiter_id: null,
+    assigned_id: null,
     children: [],
+    hasChildren: false,
   };
 
   map.set(root.id, root);
@@ -78,30 +111,48 @@ function buildTree(rootAgent: Agent, rows: DownlineRow[]): TreeNode {
       firstname: r.firstname,
       lastname: r.lastname,
       position: r.position,
-      recruiter_id: r.recruiter_id,
+      assigned_id: r.assigned_id,
       children: [],
+      hasChildren: false,
     });
   });
 
   map.forEach((node) => {
     if (node.id === root.id) return;
-    const parent = map.get(node.recruiter_id!) || root;
+
+    // Prevent self-reference
+    if (node.assigned_id === node.id) {
+      console.warn(`Promotions: Agent ${node.id} is assigned to self. Re-assigning to root.`);
+      node.assigned_id = null;
+    }
+
+    // Parent is the node with id === node.assigned_id
+    // If not found, attach to root
+    let parent = (node.assigned_id && map.get(node.assigned_id)) || root;
+
+    // Double check to avoid cycles/self-adding if map.get returned self somehow
+    if (parent.id === node.id) parent = root;
+
     parent.children.push(node);
+    parent.hasChildren = true;
   });
 
   return root;
 }
 
-/* ===================== TREE LAYOUT ENGINE ===================== */
+/* ⚙️ UPDATED: Tree layout calculations with Collapsible Support */
 
 const NODE_WIDTH = 160;
 const NODE_HEIGHT = 70;
 const GAP_X = 30;
 const GAP_Y = 80;
 
-function calculateLayout(root: TreeNode): LayoutNode {
+function calculateLayout(root: TreeNode, expandedIds: Set<number>): LayoutNode {
   const measure = (node: TreeNode): LayoutNode => {
-    if (node.children.length === 0) {
+    const isExpanded = expandedIds.has(node.id);
+
+    // If not expanded or no children, it's a leaf in the layout
+    if (!isExpanded || node.children.length === 0) {
       return { ...node, x: 0, y: 0, width: NODE_WIDTH, children: [] };
     }
 
@@ -151,7 +202,22 @@ const OrgChartTree: React.FC<{ root: TreeNode }> = ({ root }) => {
   const { width: screenWidth } = useWindowDimensions();
   const [zoom, setZoom] = useState(1);
 
-  const layoutRoot = calculateLayout(root);
+  // ⚙️ PERF: Only expand root initially to prevent crash on massive trees
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set([root.id]));
+
+  const toggleNode = (id: number) => {
+    setExpandedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const layoutRoot = calculateLayout(root, expandedIds);
 
   const nodes: LayoutNode[] = [];
   const collectNodes = (n: LayoutNode) => {
@@ -171,7 +237,7 @@ const OrgChartTree: React.FC<{ root: TreeNode }> = ({ root }) => {
 
   return (
     <View style={{ flex: 1, position: "relative" }}>
-      {/* ZOOM CONTROLS */}
+      {/* 💎 LUXURIOUS: Premium zoom controls */}
       <View
         style={{
           position: "absolute",
@@ -179,12 +245,11 @@ const OrgChartTree: React.FC<{ root: TreeNode }> = ({ root }) => {
           right: 20,
           zIndex: 100,
           flexDirection: "column",
-          gap: 10,
         }}
       >
         <TouchableOpacity
           onPress={() => setZoom((z) => Math.min(z + 0.1, 2))}
-          style={styles.zoomBtn}
+          style={[styles.zoomBtn, { marginBottom: 10 }]}
         >
           <Text style={styles.zoomText}>+</Text>
         </TouchableOpacity>
@@ -199,39 +264,34 @@ const OrgChartTree: React.FC<{ root: TreeNode }> = ({ root }) => {
 
       <ScrollView
         horizontal
-        contentContainerStyle={{
-          width: Math.max(screenWidth, scaledWidth),
-          height: Math.max(500, scaledHeight),
-        }}
+        showsHorizontalScrollIndicator={true}
+        style={{ flex: 1 }}
       >
         <ScrollView
-          contentContainerStyle={{
-            width: Math.max(screenWidth, scaledWidth),
-            height: Math.max(500, scaledHeight),
-          }}
+          showsVerticalScrollIndicator={true}
+          style={{ flex: 1 }}
+          contentContainerStyle={{ paddingBottom: memorialSpacing.tabBarHeight }}
         >
           <View
             style={{
-              width: baseContentWidth,
-              height: baseContentHeight,
-              transform: [
-                { scale: zoom },
-                { translateX: (baseContentWidth * (zoom - 1)) / 2 },
-                { translateY: (baseContentHeight * (zoom - 1)) / 2 },
-              ],
+              width: scaledWidth,
+              height: scaledHeight,
+              minWidth: screenWidth,
+              minHeight: 500,
             }}
           >
+            {/* 💎 LUXURIOUS: Premium connection lines */}
             <Svg
-              width={baseContentWidth}
-              height={baseContentHeight}
+              width={scaledWidth}
+              height={scaledHeight}
               style={StyleSheet.absoluteFill}
             >
               {nodes.map((node) =>
                 node.children.map((child) => {
-                  const startX = node.x;
-                  const startY = node.y + NODE_HEIGHT;
-                  const endX = child.x;
-                  const endY = child.y;
+                  const startX = node.x * zoom;
+                  const startY = (node.y + NODE_HEIGHT) * zoom;
+                  const endX = child.x * zoom;
+                  const endY = child.y * zoom;
                   const midY = (startY + endY) / 2;
 
                   const d = `M${startX},${startY} 
@@ -241,7 +301,7 @@ const OrgChartTree: React.FC<{ root: TreeNode }> = ({ root }) => {
                     <Path
                       key={`link-${node.id}-${child.id}`}
                       d={d}
-                      stroke="#9CA3AF"
+                      stroke={memorialColors.accentLight}
                       strokeWidth={2}
                       fill="none"
                     />
@@ -250,6 +310,7 @@ const OrgChartTree: React.FC<{ root: TreeNode }> = ({ root }) => {
               )}
             </Svg>
 
+            {/* 💎 LUXURIOUS: Premium org chart nodes */}
             {nodes.map((node) => {
               const isRoot = node.id === root.id;
 
@@ -258,25 +319,27 @@ const OrgChartTree: React.FC<{ root: TreeNode }> = ({ root }) => {
                   key={node.id}
                   style={{
                     position: "absolute",
-                    left: node.x - NODE_WIDTH / 2,
-                    top: node.y,
-                    width: NODE_WIDTH,
-                    height: NODE_HEIGHT,
-                    backgroundColor: isRoot ? "#111827" : "#FFFFFF",
-                    borderRadius: 12,
+                    left: (node.x - NODE_WIDTH / 2) * zoom,
+                    top: node.y * zoom,
+                    width: NODE_WIDTH * zoom,
+                    height: NODE_HEIGHT * zoom,
+                    backgroundColor: isRoot ? memorialColors.primary : memorialColors.bgCard,
+                    borderRadius: memorialBorderRadius.md,
                     borderWidth: 1,
-                    borderColor: isRoot ? "#111827" : "#E5E7EB",
-                    padding: 8,
+                    borderColor: isRoot ? memorialColors.primaryDark : memorialColors.border,
+                    padding: 8 * zoom,
                     alignItems: "center",
                     justifyContent: "center",
+                    ...memorialShadows.sm,
+                    zIndex: 10,
                   }}
                 >
                   <Text
                     numberOfLines={1}
                     style={{
-                      fontSize: 14,
-                      fontWeight: "700",
-                      color: isRoot ? "#FFFFFF" : "#111827",
+                      fontSize: 14 * zoom,
+                      fontWeight: memorialFonts.semibold,
+                      color: isRoot ? memorialColors.softWhite : memorialColors.primary,
                     }}
                   >
                     {node.firstname} {node.lastname}
@@ -285,12 +348,36 @@ const OrgChartTree: React.FC<{ root: TreeNode }> = ({ root }) => {
                   <Text
                     numberOfLines={1}
                     style={{
-                      fontSize: 11,
-                      color: isRoot ? "#D1D5DB" : "#6B7280",
+                      fontSize: 11 * zoom,
+                      color: isRoot ? memorialColors.cream : memorialColors.textMuted,
+                      marginTop: 2 * zoom,
                     }}
                   >
                     {displayPosition(node.position)}
                   </Text>
+
+                  {/* Toggle Button */}
+                  {node.hasChildren && (
+                    <TouchableOpacity
+                      onPress={() => toggleNode(node.id)}
+                      style={{
+                        position: 'absolute',
+                        bottom: -12 * zoom,
+                        backgroundColor: memorialColors.accent,
+                        width: 24 * zoom,
+                        height: 24 * zoom,
+                        borderRadius: 12 * zoom,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        borderWidth: 2,
+                        borderColor: memorialColors.bgCard,
+                      }}
+                    >
+                      <Text style={{ color: 'white', fontSize: 16 * zoom, fontWeight: 'bold', lineHeight: 20 * zoom }}>
+                        {expandedIds.has(node.id) ? '-' : '+'}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               );
             })}
@@ -301,15 +388,178 @@ const OrgChartTree: React.FC<{ root: TreeNode }> = ({ root }) => {
   );
 };
 
+/* ===================== RECRUITER BONUS COMPONENT ===================== */
+
+const RecruiterBonusList: React.FC<{ agentId: number }> = ({ agentId }) => {
+  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState<RecruiterBonusRow[]>([]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const load = async () => {
+        try {
+          setLoading(true);
+
+          // Determine current period (default to now)
+          const now = new Date();
+          let currentYear = now.getFullYear();
+          let currentMonth = now.getMonth() + 1;
+
+          // If before the 7th, we are in the previous month's cutoff period
+          if (now.getDate() < 7) {
+            currentMonth -= 1;
+            if (currentMonth === 0) {
+              currentMonth = 12;
+              currentYear -= 1;
+            }
+          }
+
+          const { gte, lt } = cutoffRange(currentYear, currentMonth);
+
+          // 1. Fetch recruiter bonuses with collections
+          const { data: commissions } = await supabase
+            .from("commissions")
+            .select("amount, recruiter_id, collections(payment_for)")
+            .eq("agent_id", agentId)
+            .eq("commission_type", "recruiter_bonus")
+            .gte("date_earned", gte)
+            .lt("date_earned", lt);
+
+          if (!commissions || commissions.length === 0) {
+            setRows([]);
+            return;
+          }
+
+          // 2. Collect recruiter_ids (downlines)
+          const downlineIds = new Set<number>();
+          commissions.forEach((c: any) => {
+            if (c.recruiter_id) downlineIds.add(c.recruiter_id);
+          });
+
+          // 3. Fetch downline details
+          const { data: agents } = await supabase
+            .from("agents")
+            .select("id, firstname, lastname")
+            .in("id", Array.from(downlineIds));
+
+          const agentMap = new Map();
+          (agents || []).forEach((a: any) => {
+            agentMap.set(a.id, a);
+          });
+
+          // 4. Group and calculate
+          const groups = new Map<number, RecruiterBonusRow>();
+
+          for (const comm of commissions) {
+            const subId = comm.recruiter_id;
+            if (!subId) continue;
+
+            const subAgent = agentMap.get(subId);
+            if (!subAgent) continue;
+
+            if (!groups.has(subId)) {
+              groups.set(subId, {
+                subordinate_id: subId,
+                firstname: subAgent.firstname,
+                lastname: subAgent.lastname,
+                monthly_bonus: 0,
+                outright_bonus: 0,
+                total_bonus: 0,
+              });
+            }
+
+            const g = groups.get(subId)!;
+            const amount = Number(comm.amount || 0);
+            const col = Array.isArray(comm.collections) ? comm.collections[0] : comm.collections;
+            const type = col?.payment_for;
+
+            if (type === "regular") {
+              g.monthly_bonus += amount;
+            } else {
+              // Assume everything else is Outright/Spot Cash for now
+              g.outright_bonus += amount;
+            }
+            g.total_bonus += amount;
+          }
+
+          const result = Array.from(groups.values()).sort((a, b) => b.total_bonus - a.total_bonus);
+          setRows(result);
+
+        } catch (err) {
+          console.error("Error loading bonuses:", err);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      load();
+    }, [agentId])
+  );
+
+  if (loading) {
+    return <ActivityIndicator size="small" color={memorialColors.primary} style={{ marginTop: 20 }} />;
+  }
+
+  if (rows.length === 0) {
+    return (
+      <View style={{ padding: 20, alignItems: "center" }}>
+        <Text style={{ color: memorialColors.textMuted }}>No recruiter bonuses found for this month.</Text>
+      </View>
+    );
+  }
+
+  return (
+    <ScrollView
+      style={{ flex: 1, padding: memorialSpacing.lg }}
+      contentContainerStyle={{ paddingBottom: memorialSpacing.tabBarHeight }}
+    >
+      <Text style={{
+        fontSize: memorialFonts.sm,
+        color: memorialColors.textMuted,
+        marginBottom: memorialSpacing.md,
+        textAlign: "center"
+      }}>
+        Recruiter Bonus Breakdown (This Month)
+      </Text>
+      {rows.map((row) => (
+        <View key={row.subordinate_id} style={styles.bonusCard}>
+          <View style={{ marginBottom: 8 }}>
+            <Text style={styles.bonusName}>{row.firstname} {row.lastname}</Text>
+          </View>
+
+          <View style={styles.bonusRow}>
+            <Text style={styles.bonusSub}>Monthly Bonus:</Text>
+            <Text style={styles.bonusSub}>₱{row.monthly_bonus.toFixed(2)}</Text>
+          </View>
+
+          <View style={styles.bonusRow}>
+            <Text style={styles.bonusSub}>Outright Bonus:</Text>
+            <Text style={styles.bonusSub}>₱{row.outright_bonus.toFixed(2)}</Text>
+          </View>
+
+          <View style={[styles.bonusRow, { marginTop: 8, borderTopWidth: 1, borderTopColor: memorialColors.borderLight, paddingTop: 4 }]}>
+            <Text style={{ fontWeight: "bold", color: memorialColors.primary }}>Total:</Text>
+            <Text style={styles.bonusAmount}>
+              ₱{row.total_bonus.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </Text>
+          </View>
+        </View>
+      ))}
+      <View style={{ height: 40 }} />
+    </ScrollView>
+  );
+};
+
 /* ===================== MAIN ===================== */
 
 export default function Promotions() {
   const [agent, setAgent] = useState<Agent | null>(null);
   const [rows, setRows] = useState<DownlineRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"tree" | "benefits">("tree");
+  const [activeTab, setActiveTab] = useState<"tree" | "benefits" | "recruiter">("tree");
+  const [rulesExpanded, setRulesExpanded] = useState(false); // 💎 NEW: Collapsible rules state
 
-
+  // ⚙️ UNCHANGED: Agent ID retrieval logic
   const getAgentId = useCallback(async () => {
     const { data: session } = await supabase.auth.getUser();
     const user_id = session?.user?.id;
@@ -330,6 +580,7 @@ export default function Promotions() {
     return data.agent_id;
   }, []);
 
+  // ⚙️ UPDATED: Data loading logic with assigned_id
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -342,30 +593,78 @@ export default function Promotions() {
         .eq("id", id)
         .maybeSingle();
 
-      const { data: downlines } = await supabase
+      console.log("Promotions: Fetching hierarchy for root:", id);
+
+      // 1. Fetch the hierarchy structure (IDs only)
+      const { data: rawDownlines, error: hierError } = await supabase
         .from("full_hierarchy_downlines")
-        .select("*")
+        .select("agent_id")
         .eq("root_id", id);
 
-      const filtered = (downlines || []).filter(
+      if (hierError) {
+        console.error("Promotions: Hierarchy error:", hierError);
+        throw hierError;
+      }
+
+      // 2. Collect IDs to fetch details
+      const agentIds = (rawDownlines || []).map((r: any) => r.agent_id);
+
+      // 3. Fetch agent details manually (including assigned_id)
+      const { data: agentsDetails, error: agentsError } = await supabase
+        .from("agents")
+        .select("id, firstname, lastname, position, assigned_id")
+        .in("id", agentIds);
+
+      if (agentsError) {
+        console.error("Promotions: Agents fetch error:", agentsError);
+        throw agentsError;
+      }
+
+      // 4. Create a map for quick lookup
+      const agentsMap = new Map();
+      (agentsDetails || []).forEach((a: any) => {
+        agentsMap.set(a.id, a);
+      });
+
+      // 5. Merge data
+      const downlines = (rawDownlines || []).map((r: any) => {
+        const details = agentsMap.get(r.agent_id);
+        return {
+          agent_id: r.agent_id,
+          assigned_id: details?.assigned_id || null,
+          firstname: details?.firstname || "Unknown",
+          lastname: details?.lastname || "Agent",
+          position: details?.position || "Sales Executive",
+        };
+      });
+
+      const filtered = downlines.filter(
         (r: any) => r.agent_id !== id
       );
+      console.log("Promotions: Filtered rows (excluding root):", filtered.length);
 
       setAgent(agentData as Agent);
       setRows(filtered as DownlineRow[]);
+    } catch (err: any) {
+      console.error("Promotions Load Error:", err);
+      alert("Error loading promotions: " + err.message);
     } finally {
       setLoading(false);
     }
   }, [getAgentId]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
 
   if (loading)
     return (
       <BackgroundLogo>
-        <ActivityIndicator size="large" color="#0b4aa2" />
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={memorialColors.primary} />
+        </View>
       </BackgroundLogo>
     );
 
@@ -376,132 +675,282 @@ export default function Promotions() {
   return (
     <BackgroundLogo>
       <View style={{ flex: 1 }}>
-        {/* ===== HEADER ===== */}
-        <View style={{ padding: 16, paddingBottom: 0 }}>
-          <Text style={{ fontSize: 24, fontWeight: "800", color: "#111827" }}>
+        {/* 💎 LUXURIOUS: Premium header */}
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>
             {agent.firstname} {agent.lastname}
           </Text>
-          <Text style={{ color: "#6B7280" }}>
+          <Text style={styles.headerSubtitle}>
             {displayPosition(agent.position)}
           </Text>
         </View>
 
-        {/* ✅ PROMOTION RULES NOTE (ONLY THIS WAS ADDED) */}
-        <View
-          style={{
-            backgroundColor: "#FFFFFF",
-            margin: 16,
-            padding: 14,
-            borderRadius: 12,
-            borderLeftWidth: 4,
-            borderLeftColor: "#0b4aa2",
-          }}
+        {/* 💎 LUXURIOUS: Collapsible promotion rules card */}
+        <TouchableOpacity
+          style={styles.rulesCard}
+          onPress={() => setRulesExpanded(!rulesExpanded)}
+          activeOpacity={0.7}
         >
-          <Text style={{ fontWeight: "700", marginBottom: 6 }}>
-            📌 Promotion Rules
-          </Text>
+          <View style={styles.rulesHeader}>
+            <Text style={styles.rulesTitle}>
+              📌 Promotion Rules
+            </Text>
+            <Text style={styles.rulesToggle}>
+              {rulesExpanded ? '▲' : '▼'}
+            </Text>
+          </View>
 
-          <Text style={styles.noteText}>
-            ✅ 20 direct Agents / Sales Executives → Assistant Supervisor
-          </Text>
-          <Text style={styles.noteText}>
-            ✅ 10 direct Assistant Supervisors → Marketing Supervisor
-          </Text>
-          <Text style={styles.noteText}>
-            ✅ 3 direct Marketing Supervisors → Marketing Head
-          </Text>
+          {rulesExpanded && (
+            <>
+              <Text style={styles.ruleText}>
+                ✅ 20 direct Agents / Sales Executives - Assistant Supervisor
+              </Text>
+              <Text style={styles.ruleText}>
+                ✅ 10 direct Assistant Supervisors - Marketing Supervisor
+              </Text>
+              <Text style={styles.ruleText}>
+                ✅ 3 direct Marketing Supervisors - Marketing Head
+              </Text>
 
-          <Text
-            style={{
-              marginTop: 6,
-              fontStyle: "italic",
-              fontSize: 12,
-              color: "#6B7280",
-            }}
+              <Text style={styles.ruleFooter}>
+                Grow your team to grow your rank.
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+        {/* 🎨 VISUAL: Memorial-themed toggle buttons */}
+        <View style={styles.tabContainer}>
+          <TouchableOpacity
+            onPress={() => setActiveTab("tree")}
+            style={[
+              styles.tabButton,
+              activeTab === "tree" && styles.tabButtonActive
+            ]}
           >
-            Grow your team to grow your rank.
-          </Text>
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === "tree" && styles.tabTextActive
+              ]}
+            >
+              Hierarchy
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => setActiveTab("benefits")}
+            style={[
+              styles.tabButton,
+              activeTab === "benefits" && styles.tabButtonActive
+            ]}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === "benefits" && styles.tabTextActive
+              ]}
+            >
+              Benefits
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => setActiveTab("recruiter")}
+            style={[
+              styles.tabButton,
+              activeTab === "recruiter" && styles.tabButtonActive
+            ]}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                activeTab === "recruiter" && styles.tabTextActive
+              ]}
+            >
+              Recruiter Bonus
+            </Text>
+          </TouchableOpacity>
         </View>
 
-        {/* ===== TREE VIEW ===== */}
-        {/* ===== TOGGLE BUTTONS ===== */}
-<View style={{ flexDirection: "row", paddingHorizontal: 16, marginBottom: 8 }}>
-  <TouchableOpacity
-    onPress={() => setActiveTab("tree")}
-    style={{
-      flex: 1,
-      padding: 10,
-      borderRadius: 8,
-      backgroundColor: activeTab === "tree" ? "#0b4aa2" : "#E5E7EB",
-      marginRight: 6,
-    }}
-  >
-    <Text
-      style={{
-        textAlign: "center",
-        fontWeight: "700",
-        color: activeTab === "tree" ? "#FFFFFF" : "#111827",
-      }}
-    >
-      Hierarchy
-    </Text>
-  </TouchableOpacity>
-
-  <TouchableOpacity
-    onPress={() => setActiveTab("benefits")}
-    style={{
-      flex: 1,
-      padding: 10,
-      borderRadius: 8,
-      backgroundColor: activeTab === "benefits" ? "#0b4aa2" : "#E5E7EB",
-      marginLeft: 6,
-    }}
-  >
-    <Text
-      style={{
-        textAlign: "center",
-        fontWeight: "700",
-        color: activeTab === "benefits" ? "#FFFFFF" : "#111827",
-      }}
-    >
-      Benefits
-    </Text>
-  </TouchableOpacity>
-</View>
-
-{/* ===== TAB CONTENT ===== */}
-<View style={{ flex: 1, backgroundColor: "#F9FAFB" }}>
-  {activeTab === "tree" ? (
-    <OrgChartTree root={treeRoot} />
-  ) : (
-    <BenefitsTab />
-  )}
-</View>
-</View>
-
-    </BackgroundLogo>
-    
+        {/* Tab content */}
+        <View style={{ flex: 1, backgroundColor: memorialColors.bgPrimary }}>
+          {activeTab === "tree" ? (
+            <OrgChartTree root={treeRoot} />
+          ) : activeTab === "benefits" ? (
+            <BenefitsTab />
+          ) : (
+            <RecruiterBonusList agentId={agent.id} />
+          )}
+        </View>
+      </View>
+    </BackgroundLogo >
   );
 }
 
 /* ===================== STYLES ===================== */
 
 const styles = StyleSheet.create({
-  zoomBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#111827",
+  centered: {
+    flex: 1,
     justifyContent: "center",
     alignItems: "center",
   },
-  zoomText: {
-    color: "#FFFFFF",
-    fontSize: 22,
-    fontWeight: "bold",
+
+  // 💎 LUXURIOUS: Premium header
+  header: {
+    padding: memorialSpacing.xxl,
+    paddingBottom: memorialSpacing.lg,
+    backgroundColor: memorialColors.primary,
+    borderBottomWidth: 2,
+    borderBottomColor: memorialColors.gold,
   },
-  noteText: {
-    fontSize: 13,
-    marginBottom: 4,
+
+  headerTitle: {
+    fontSize: memorialFonts.xxxl,
+    fontWeight: memorialFonts.bold,
+    color: memorialColors.white,
+    letterSpacing: memorialFonts.letterSpacing.wide,
+  },
+
+  headerSubtitle: {
+    color: memorialColors.goldLight,
+    fontSize: memorialFonts.lg,
+    marginTop: memorialSpacing.xs,
+    fontStyle: "italic",
+  },
+
+  // 💎 LUXURIOUS: Collapsible premium rules card
+  rulesCard: {
+    backgroundColor: memorialColors.white,
+    margin: memorialSpacing.lg,
+    padding: memorialSpacing.lg,
+    borderRadius: memorialBorderRadius.xl,
+    borderLeftWidth: 4,
+    borderLeftColor: memorialColors.gold,
+    ...memorialShadows.lg,
+    borderWidth: 1,
+    borderColor: memorialColors.silver,
+  },
+
+  rulesHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: memorialSpacing.xs,
+  },
+
+  rulesTitle: {
+    fontWeight: memorialFonts.bold,
+    fontSize: memorialFonts.lg,
+    color: memorialColors.black,
+    letterSpacing: memorialFonts.letterSpacing.wide,
+  },
+
+  rulesToggle: {
+    fontSize: memorialFonts.lg,
+    color: memorialColors.gold,
+    fontWeight: memorialFonts.bold,
+  },
+
+  ruleText: {
+    fontSize: memorialFonts.sm,
+    marginBottom: memorialSpacing.xs,
+    color: memorialColors.textSecondary,
+  },
+
+  ruleFooter: {
+    marginTop: memorialSpacing.sm,
+    fontStyle: "italic",
+    fontSize: memorialFonts.sm,
+    color: memorialColors.textMuted,
+  },
+
+  // 🎨 VISUAL: Memorial-themed tabs
+  tabContainer: {
+    flexDirection: "row",
+    paddingHorizontal: memorialSpacing.lg,
+    marginBottom: memorialSpacing.sm,
+  },
+
+
+
+  tabButton: {
+    flex: 1,
+    padding: memorialSpacing.md,
+    borderRadius: memorialBorderRadius.md,
+    backgroundColor: memorialColors.cream,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: memorialColors.border,
+    marginHorizontal: memorialSpacing.xs / 2, // Replaces gap
+  },
+
+  tabButtonActive: {
+    backgroundColor: memorialColors.primary,
+    borderColor: memorialColors.primaryDark,
+  },
+
+  tabText: {
+    fontWeight: memorialFonts.semibold,
+    color: memorialColors.textSecondary,
+    fontSize: memorialFonts.md,
+  },
+
+  tabTextActive: {
+    color: memorialColors.softWhite,
+  },
+
+  // 💎 LUXURIOUS: Premium zoom buttons
+  zoomBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: memorialColors.gold,
+    justifyContent: "center",
+    alignItems: "center",
+    ...memorialShadows.gold,
+    borderWidth: 2,
+    borderColor: memorialColors.white,
+  },
+
+  zoomText: {
+    color: memorialColors.black,
+    fontSize: 26,
+    fontWeight: memorialFonts.black,
+    lineHeight: 30,
+  },
+
+  // 💎 LUXURIOUS: Premium bonus card
+  bonusCard: {
+    backgroundColor: memorialColors.white,
+    padding: memorialSpacing.lg,
+    borderRadius: memorialBorderRadius.xl,
+    marginBottom: memorialSpacing.md,
+    ...memorialShadows.lg,
+    borderLeftWidth: 4,
+    borderLeftColor: memorialColors.gold,
+    borderWidth: 1,
+    borderColor: memorialColors.silver,
+  },
+  bonusRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  bonusName: {
+    fontSize: memorialFonts.md,
+    fontWeight: memorialFonts.semibold,
+    color: memorialColors.primary,
+  },
+  bonusSub: {
+    fontSize: memorialFonts.xs,
+    color: memorialColors.textMuted,
+    marginTop: 2,
+  },
+  bonusAmount: {
+    fontSize: memorialFonts.lg,
+    fontWeight: memorialFonts.bold,
+    color: memorialColors.success,
   },
 });

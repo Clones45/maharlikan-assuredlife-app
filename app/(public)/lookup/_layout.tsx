@@ -1,15 +1,19 @@
 import { Tabs } from "expo-router";
-import { colors } from "../../../lib/theme";
 import { TabIcon } from "../../../components/TabIcon";
+import { memorialColors } from "../../../constants/memorialTheme";
 
 export default function PublicMemberLayout() {
   return (
     <Tabs
       screenOptions={{
         headerShown: false, // 🔹 Hides the top “lookup” header
-        tabBarActiveTintColor: "#fff",
-        tabBarInactiveTintColor: "#dbeafe",
-        tabBarStyle: { backgroundColor: colors.primary },
+        tabBarActiveTintColor: memorialColors.softWhite,
+        tabBarInactiveTintColor: memorialColors.accentLight,
+        tabBarStyle: {
+          backgroundColor: memorialColors.primary,
+          borderTopColor: memorialColors.primaryLight,
+          borderTopWidth: 1,
+        },
       }}
     >
       <Tabs.Screen
@@ -17,7 +21,7 @@ export default function PublicMemberLayout() {
         options={{
           title: "Find SOA",
           tabBarIcon: ({ color, size }) => (
-            <TabIcon name="search" color={color} size={size} />
+            <TabIcon name="search-outline" color={color} size={size} />
           ),
         }}
       />
@@ -26,7 +30,7 @@ export default function PublicMemberLayout() {
         options={{
           title: "SOA",
           tabBarIcon: ({ color, size }) => (
-            <TabIcon name="document-text" color={color} size={size} />
+            <TabIcon name="document-text-outline" color={color} size={size} />
           ),
         }}
       />
@@ -35,7 +39,7 @@ export default function PublicMemberLayout() {
         options={{
           title: "Promotions",
           tabBarIcon: ({ color, size }) => (
-            <TabIcon name="pricetags" color={color} size={size} />
+            <TabIcon name="pricetags-outline" color={color} size={size} />
           ),
         }}
       />

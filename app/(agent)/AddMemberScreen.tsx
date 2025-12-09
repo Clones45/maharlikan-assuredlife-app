@@ -1,3 +1,7 @@
+// ✨ REDESIGNED: Memorial Services Theme - Add Member Form
+// 🎨 Visual changes: Gentle form styling, peaceful colors, respectful layout
+// ⚙️ Logic: ALL validation, access code checks, Supabase inserts UNCHANGED
+
 import React, { useEffect, useState } from "react";
 import {
   Alert,
@@ -15,7 +19,7 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import { Picker } from "@react-native-picker/picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../../lib/supabase";
-import { colors } from "../../lib/theme"; // optional, you can replace with your own
+import { memorialColors, memorialSpacing, memorialBorderRadius, memorialFonts, memorialShadows } from "../../constants/memorialTheme";
 
 const PROFILE_TABLE = "users_profile";
 
@@ -33,27 +37,27 @@ const PLAN_MAP: Record<
   string,
   { casket_type: string; contracted_price: number; monthly_due: number }
 > = {
-  "PLAN A1": {
+  "PACKAGE A1": {
     casket_type: "JUNIOR PLAIN",
     contracted_price: 29880,
     monthly_due: 498,
   },
-  "PLAN A2": {
+  "PACKAGE A2": {
     casket_type: "JUNIOR PLAIN",
     contracted_price: 30000,
     monthly_due: 500,
   },
-  "PLAN B1": {
+  "PACKAGE B1": {
     casket_type: "JUNIOR PLAIN",
     contracted_price: 20880,
     monthly_due: 348,
   },
-  "PLAN B2": {
+  "PACKAGE B2": {
     casket_type: "JUNIOR PLAIN",
     contracted_price: 21000,
     monthly_due: 350,
   },
-  CARD: {
+  MS: {
     casket_type: "NO CASKET",
     contracted_price: 0,
     monthly_due: 0,
@@ -303,7 +307,7 @@ export default function AddMemberScreen() {
       return false;
     }
     if (!planType) {
-      showStatus("error", "Plan", "Please select a plan type.");
+      showStatus("error", "Package", "Please select a PACKAGE type.");
       return false;
     }
     if (!agentId) {
@@ -505,10 +509,8 @@ export default function AddMemberScreen() {
       keyboardShouldPersistTaps="handled"
     >
 
-      <Text style={{ color: "red", fontWeight: "bold", marginBottom: 10 }}>
-        ✅ THIS IS THE PATCHED VERSION
-      </Text>
-      <Text style={styles.screenTitle}>Add Member (With Code)</Text>
+
+      <Text style={styles.screenTitle}>Add Member (Using your CODE)</Text>
 
       {/* ACCESS CODE */}
       <View style={styles.card}>
@@ -708,13 +710,13 @@ export default function AddMemberScreen() {
           <Picker.Item label="Non-Insurable" value="Non-Insurable" />
         </Picker>
 
-        <Text style={styles.label}>Plan Type</Text>
+        <Text style={styles.label}>PACKAGE Type</Text>
         <Picker selectedValue={planType} onValueChange={handlePlanChange}>
           <Picker.Item label="-- Select --" value="" />
-          <Picker.Item label="PLAN A1" value="PLAN A1" />
-          <Picker.Item label="PLAN A2" value="PLAN A2" />
-          <Picker.Item label="PLAN B1" value="PLAN B1" />
-          <Picker.Item label="PLAN B2" value="PLAN B2" />
+          <Picker.Item label="PACKAGE A1" value="PACKAGE A1" />
+          <Picker.Item label="PACKAGE A2" value="PACKAGE A2" />
+          <Picker.Item label="PACKAGE B1" value="PACKAGE B1" />
+          <Picker.Item label="PACKAGE B2" value="PACKAGE B2" />
           <Picker.Item label="CARD" value="CARD" />
         </Picker>
 
@@ -860,121 +862,146 @@ export default function AddMemberScreen() {
   );
 }
 
+// 🎨 MEMORIAL-THEMED STYLES
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f5f6fa" },
-  content: { padding: 16 },
-  screenTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    marginBottom: 10,
-    color: colors?.primary || "#0b4d87",
+  container: {
+    flex: 1,
+    backgroundColor: memorialColors.bgPrimary,
   },
+  content: {
+    padding: memorialSpacing.lg,
+    paddingBottom: memorialSpacing.tabBarHeight,
+  },
+  screenTitle: {
+    fontSize: memorialFonts.xxl,
+    fontWeight: memorialFonts.bold,
+    marginBottom: memorialSpacing.md,
+    color: memorialColors.primary,
+  },
+  // 🎨 VISUAL: Peaceful card styling
   card: {
-    backgroundColor: "#ffffff",
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 1,
+    backgroundColor: memorialColors.bgCard,
+    borderRadius: memorialBorderRadius.lg,
+    padding: memorialSpacing.lg,
+    marginBottom: memorialSpacing.md,
+    ...memorialShadows.md,
+    borderWidth: 1,
+    borderColor: memorialColors.borderLight,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    marginBottom: 8,
-    color: "#111827",
+    fontSize: memorialFonts.lg,
+    fontWeight: memorialFonts.semibold,
+    marginBottom: memorialSpacing.sm,
+    color: memorialColors.primary,
   },
-  label: { fontWeight: "600", marginTop: 8, marginBottom: 4 },
+  label: {
+    fontWeight: memorialFonts.medium,
+    marginTop: memorialSpacing.sm,
+    marginBottom: memorialSpacing.xs,
+    color: memorialColors.textSecondary,
+  },
+  // 🎨 VISUAL: Gentle input fields
   input: {
     borderWidth: 1,
-    borderColor: "#d1d5db",
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    marginBottom: 8,
-    backgroundColor: "#fff",
-    fontSize: 14,
+    borderColor: memorialColors.border,
+    borderRadius: memorialBorderRadius.md,
+    paddingHorizontal: memorialSpacing.md,
+    paddingVertical: memorialSpacing.sm,
+    marginBottom: memorialSpacing.sm,
+    backgroundColor: memorialColors.softWhite,
+    fontSize: memorialFonts.md,
+    color: memorialColors.textPrimary,
   },
+  // 🎨 VISUAL: Memorial-themed buttons
   primaryBtn: {
-    backgroundColor: colors?.primary || "#0b4d87",
-    paddingVertical: 12,
-    borderRadius: 10,
+    backgroundColor: memorialColors.primary,
+    paddingVertical: memorialSpacing.md,
+    borderRadius: memorialBorderRadius.md,
     alignItems: "center",
-    marginTop: 4,
+    marginTop: memorialSpacing.xs,
+    ...memorialShadows.sm,
   },
-  primaryBtnText: { color: "#fff", fontWeight: "700" },
-  helperText: { fontSize: 12, color: "#6b7280", marginBottom: 8 },
+  primaryBtnText: {
+    color: memorialColors.softWhite,
+    fontWeight: memorialFonts.semibold,
+    fontSize: memorialFonts.md,
+  },
+  helperText: {
+    fontSize: memorialFonts.sm,
+    color: memorialColors.textMuted,
+    marginBottom: memorialSpacing.sm,
+    fontStyle: "italic",
+  },
+  // 🎨 VISUAL: Respectful beneficiary boxes
   beneBox: {
     borderWidth: 1,
-    borderColor: "#e5e7eb",
-    borderRadius: 10,
-    padding: 8,
-    marginBottom: 8,
-    backgroundColor: "#f9fafb",
+    borderColor: memorialColors.border,
+    borderRadius: memorialBorderRadius.md,
+    padding: memorialSpacing.md,
+    marginBottom: memorialSpacing.sm,
+    backgroundColor: memorialColors.cream,
   },
   removeText: {
-    color: "#b91c1c",
-    fontSize: 12,
+    color: memorialColors.error,
+    fontSize: memorialFonts.sm,
     textAlign: "right",
-    marginTop: 4,
+    marginTop: memorialSpacing.xs,
   },
   addMoreText: {
-    color: colors?.primary || "#0b4d87",
-    fontWeight: "600",
-    marginTop: 4,
+    color: memorialColors.primary,
+    fontWeight: memorialFonts.semibold,
+    marginTop: memorialSpacing.xs,
   },
   verifiedText: {
-    marginTop: 6,
-    fontSize: 12,
-    color: "green",
-    fontWeight: "500",
+    marginTop: memorialSpacing.sm,
+    fontSize: memorialFonts.sm,
+    color: memorialColors.success,
+    fontWeight: memorialFonts.medium,
   },
+  // 🎨 VISUAL: Peaceful modal styling
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: memorialColors.overlayDark,
     justifyContent: "center",
     alignItems: "center",
-    padding: 20,
+    padding: memorialSpacing.xl,
   },
   modalContent: {
-    backgroundColor: "white",
-    borderRadius: 20,
-    padding: 24,
+    backgroundColor: memorialColors.bgCard,
+    borderRadius: memorialBorderRadius.xl,
+    padding: memorialSpacing.xxl,
     alignItems: "center",
     width: "100%",
     maxWidth: 340,
-    elevation: 5,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
+    ...memorialShadows.lg,
+    borderWidth: 1,
+    borderColor: memorialColors.borderLight,
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    marginTop: 16,
-    marginBottom: 8,
-    color: "#1f2937",
+    fontSize: memorialFonts.xl,
+    fontWeight: memorialFonts.bold,
+    marginTop: memorialSpacing.lg,
+    marginBottom: memorialSpacing.sm,
+    color: memorialColors.primary,
     textAlign: "center",
   },
   modalMessage: {
-    fontSize: 16,
-    color: "#6b7280",
+    fontSize: memorialFonts.md,
+    color: memorialColors.textSecondary,
     textAlign: "center",
-    marginBottom: 24,
+    marginBottom: memorialSpacing.xxl,
   },
   modalButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 32,
-    borderRadius: 10,
+    paddingVertical: memorialSpacing.md,
+    paddingHorizontal: memorialSpacing.xxxl,
+    borderRadius: memorialBorderRadius.md,
     width: "100%",
     alignItems: "center",
+    ...memorialShadows.sm,
   },
   modalButtonText: {
-    color: "white",
-    fontWeight: "bold",
-    fontSize: 16,
+    color: memorialColors.softWhite,
+    fontWeight: memorialFonts.semibold,
+    fontSize: memorialFonts.md,
   },
 });

@@ -3,13 +3,21 @@ import "react-native-reanimated";
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
   View, Text, StyleSheet, FlatList, ScrollView, RefreshControl, TouchableOpacity,
+  Platform, UIManager, LayoutAnimation
 } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { supabase } from "../../../lib/supabase";
 import BackButton from "../../../components/BackButton";
+import BackgroundLogo from "../../../components/BackgroundLogo";
+import { memorialColors, memorialSpacing, memorialBorderRadius, memorialFonts, memorialShadows } from "../../../constants/memorialTheme";
+
+// Enable animations
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 type AnyStr = string | null;
-type AnyNum = number | string | null;
+type AnyNum = number | string | null | undefined;
 
 type Member = {
   id: number;
@@ -64,7 +72,13 @@ function fmtDate(d?: AnyStr): string {
   const s = cleanValue(d);
   if (!s || s === "0001-01-01") return "";
   const dt = new Date(s);
-  return isNaN(dt.getTime()) ? s : dt.toLocaleDateString();
+  return isNaN(dt.getTime()) ? s : dt.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+function fmtMoney(amount: AnyNum): string {
+  const val = Number(amount);
+  if (isNaN(val)) return "—";
+  return val.toLocaleString('en-PH', { style: 'currency', currency: 'PHP' });
 }
 
 export default function AgentMemberDetail() {
@@ -138,130 +152,337 @@ export default function AgentMemberDetail() {
     setRefreshing(false);
   };
 
-  const Field = ({ label, value }: { label: string; value?: AnyStr | AnyNum }) => {
-    const val = cleanValue(value);
-    return val ? (
-      <View style={styles.row}>
-        <Text style={styles.rowLabel}>{label}</Text>
-        <Text style={styles.rowValue}>{val}</Text>
+  const Field = ({ label, value, isMoney = false, fullWidth = false }: { label: string; value?: AnyStr | AnyNum, isMoney?: boolean, fullWidth?: boolean }) => {
+    const rawVal = cleanValue(value);
+    const displayVal = isMoney ? fmtMoney(value) : rawVal;
+
+    if (!displayVal) return null;
+
+    return (
+      <View style={[styles.fieldRow, fullWidth && styles.fieldRowFull]}>
+        <Text style={styles.fieldLabel}>{label}</Text>
+        <Text style={styles.fieldValue}>{displayVal}</Text>
       </View>
-    ) : null;
+    );
   };
 
-  const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
+  const Section = ({ title, children, icon }: { title: string; children: React.ReactNode, icon?: string }) => (
     <View style={styles.card}>
-      <Text style={styles.section}>{title}</Text>
-      {children}
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        {/* Could add icon here if passed */}
+      </View>
+      <View style={styles.sectionContent}>
+        {children}
+      </View>
     </View>
   );
 
   const renderBeneficiary = ({ item }: { item: Beneficiary }) => {
-    const bName = [cleanValue(item.last_name), cleanValue(item.first_name), cleanValue(item.middle_name)]
-      .filter(Boolean).join(", ").replace(/\s+,/g, ",");
+    const bName = [cleanValue(item.first_name), cleanValue(item.middle_name), cleanValue(item.last_name)]
+      .filter(Boolean).join(" ").replace(/\s+,/g, ",");
     return (
       <View style={styles.benCard}>
-        <Text style={styles.benName}>{bName || "Beneficiary"}</Text>
-        <Field label="Relationship" value={item.relation} />
-        {fmtDate(item.birth_date) ? <Field label="Birth date" value={fmtDate(item.birth_date)} /> : null}
-        <Field label="Address" value={item.address} />
+        <View style={styles.benHeader}>
+          <Text style={styles.benName}>{bName || "Beneficiary"}</Text>
+          {item.relation && <View style={styles.benBadge}><Text style={styles.benBadgeText}>{item.relation}</Text></View>}
+        </View>
+        <View style={styles.benDetails}>
+          {fmtDate(item.birth_date) ? <Text style={styles.benText}>Born: {fmtDate(item.birth_date)}</Text> : null}
+          {item.address ? <Text style={styles.benText} numberOfLines={2}>📍 {item.address}</Text> : null}
+        </View>
       </View>
     );
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#eef3fb" }}>
-      <Stack.Screen
-        options={{
-          title: member ? `${member.last_name}, ${member.first_name}` : "Member",
-          headerLeft: () => <BackButton />,
-          headerBackTitle: "Back",
-        }}
-      />
+    <BackgroundLogo>
+      <View style={styles.container}>
+        <Stack.Screen
+          options={{
+            headerTitle: "Member Profile",
+            headerTitleStyle: { fontFamily: 'serif', color: memorialColors.primary },
+            headerLeft: () => <BackButton />,
+            headerBackTitle: "Back",
+            headerTransparent: true,
+            headerBlurEffect: 'regular',
+            headerBackground: () => <View style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.85)' }} />
+          }}
+        />
 
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 16, paddingBottom: 28 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      >
-        {/* Member card */}
-        <View style={styles.card}>
-          <Text style={styles.title}>{name || "Member"}</Text>
-          <Field label="AF No." value={member?.maf_no} />
-          <Field label="Contact No." value={member?.contact_number} />
-          <Field label="Address" value={member?.address} />
-          {fmtDate(member?.birth_date) ? <Field label="Birth date" value={fmtDate(member?.birth_date)} /> : null}
-          <Field label="Age" value={member?.age} />
-          <Field label="Gender" value={member?.gender} />
-          <Field label="Civil Status" value={member?.civil_status} />
-        </View>
-
-        {/* Plan & Account */}
-        <Section title="Plan & Account">
-          <Field label="Plan type" value={member?.plan_type} />
-          <Field label="Monthly dues" value={member?.monthly_due} />
-          <Field label="Contracted price" value={member?.contracted_price} />
-          {fmtDate(member?.date_joined) ? <Field label="Date joined" value={fmtDate(member?.date_joined)} /> : null}
-          <Field label="Balance" value={member?.balance} />
-          <Field label="Membership" value={member?.membership} />
-          <Field label="Casket type" value={member?.casket_type} />
-          <Field label="Agent" value={member?.agent} />
-        </Section>
-
-        {/* Personal info */}
-        <Section title="Personal Info">
-          <Field label="Birthplace" value={member?.birthplace} />
-          <Field label="Nationality" value={member?.nationality} />
-          <Field label="Height" value={member?.height} />
-          <Field label="Weight" value={member?.weight} />
-          <Field label="Religion" value={member?.religion} />
-          <Field label="Zipcode" value={member?.zipcode} />
-          <Field label="Occupation" value={member?.occupation} />
-        </Section>
-
-        {/* Beneficiaries */}
-        <Section title="Beneficiaries">
-          {loading ? <Text style={styles.note}>Loading…</Text> : null}
-          {!loading && beneficiaries.length === 0 ? (
-            <Text style={styles.note}>No beneficiaries found</Text>
-          ) : (
-            <FlatList
-              data={beneficiaries}
-              keyExtractor={(b) => String(b.id)}
-              renderItem={renderBeneficiary}
-              scrollEnabled={false}
-              ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
-            />
-          )}
-        </Section>
-
-        {/* View Statement */}
-        <TouchableOpacity
-          style={styles.primaryBtn}
-          disabled={!member}
-          onPress={() =>
-            router.push({
-              pathname: "/member/soa",
-              params: { id: String(memberId), maf_no: cleanValue(member?.maf_no) },
-            })
-          }
+        <ScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={{ padding: memorialSpacing.lg, paddingTop: 100, paddingBottom: 40 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={memorialColors.primary} />}
+          showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.primaryBtnText}>View Statement</Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </View>
+          {/* Header Profile Card */}
+          <View style={styles.profileCard}>
+            <View style={styles.profileAvatar}>
+              <Text style={styles.profileInitials}>
+                {(member?.first_name?.[0] || "")}{(member?.last_name?.[0] || "")}
+              </Text>
+            </View>
+            <Text style={styles.profileName}>{name || "Loading..."}</Text>
+            <Text style={styles.profileId}>AF No. {member?.maf_no || "—"}</Text>
+
+            <View style={styles.profileStats}>
+              <View style={styles.statItem}>
+                <Text style={styles.statLabel}>Status</Text>
+                <Text style={styles.statValue}>Active</Text>
+              </View>
+              <View style={styles.statDivider} />
+              <View style={styles.statItem}>
+                <Text style={styles.statLabel}>Since</Text>
+                <Text style={styles.statValue}>{fmtDate(member?.date_joined) || "—"}</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Plan & Account */}
+          <Section title="Plan & Account">
+            <View style={styles.gridContainer}>
+              <Field label="Package" value={member?.plan_type} />
+              <Field label="Monthly" value={member?.monthly_due} isMoney />
+              <Field label="Contract Price" value={member?.contracted_price} isMoney />
+              <Field label="Balance" value={member?.balance} isMoney />
+              <Field label="Casket Type" value={member?.casket_type} fullWidth />
+              <Field label="Membership" value={member?.membership} fullWidth />
+              <Field label="Agent" value={member?.agent} fullWidth />
+            </View>
+          </Section>
+
+          {/* Personal info */}
+          <Section title="Personal Information">
+            <View style={styles.gridContainer}>
+              <Field label="Birth date" value={fmtDate(member?.birth_date)} />
+              <Field label="Age" value={member?.age} />
+              <Field label="Civil Status" value={member?.civil_status} />
+              <Field label="Gender" value={member?.gender} />
+              <Field label="Religion" value={member?.religion} />
+              <Field label="Contact" value={member?.contact_number} />
+              <Field label="Address" value={member?.address} fullWidth />
+              <Field label="Zipcode" value={member?.zipcode} />
+              <Field label="Origin" value={member?.birthplace} fullWidth />
+              <Field label="Occupation" value={member?.occupation} fullWidth />
+            </View>
+            <View style={styles.gridContainer}>
+              <Field label="Height" value={member?.height} />
+              <Field label="Weight" value={member?.weight} />
+            </View>
+          </Section>
+
+          {/* Beneficiaries */}
+          <Section title="Beneficiaries">
+            {loading ? <Text style={styles.note}>Loading details...</Text> : null}
+            {!loading && beneficiaries.length === 0 ? (
+              <Text style={styles.note}>No beneficiaries recorded.</Text>
+            ) : (
+              <FlatList
+                data={beneficiaries}
+                keyExtractor={(b) => String(b.id)}
+                renderItem={renderBeneficiary}
+                scrollEnabled={false}
+                ItemSeparatorComponent={() => <View style={{ height: memorialSpacing.sm }} />}
+              />
+            )}
+          </Section>
+
+          {/* View Statement Action */}
+          <TouchableOpacity
+            style={styles.actionBtn}
+            disabled={!member}
+            onPress={() =>
+              router.push({
+                pathname: "/member/soa",
+                params: { id: String(memberId), maf_no: cleanValue(member?.maf_no) },
+              })
+            }
+            activeOpacity={0.8}
+          >
+            <Text style={styles.actionBtnText}>View Statement of Account</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+    </BackgroundLogo>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { backgroundColor: "#fff", padding: 14, borderRadius: 12, marginBottom: 12, shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 8, elevation: 1 },
-  title: { fontSize: 18, fontWeight: "800", color: "#0d3b7a", marginBottom: 6 },
-  section: { fontSize: 16, fontWeight: "700", color: "#0d3b7a", marginBottom: 8 },
-  row: { flexDirection: "row", marginBottom: 6 },
-  rowLabel: { width: 135, color: "#4b5563", fontWeight: "600" },
-  rowValue: { flex: 1, color: "#111827" },
-  note: { color: "#4b5563" },
-  benCard: { backgroundColor: "#f9fafb", borderRadius: 10, padding: 12 },
-  benName: { fontSize: 15, fontWeight: "700", color: "#0d3b7a", marginBottom: 4 },
-  primaryBtn: { backgroundColor: "#1f6feb", paddingVertical: 12, borderRadius: 10, alignItems: "center", marginTop: 12 },
-  primaryBtnText: { color: "#fff", fontWeight: "800" },
+  container: {
+    flex: 1,
+  },
+  profileCard: {
+    backgroundColor: memorialColors.white,
+    borderRadius: memorialBorderRadius.xl,
+    padding: memorialSpacing.xl,
+    alignItems: 'center',
+    marginBottom: memorialSpacing.lg,
+    ...memorialShadows.md,
+    borderTopWidth: 4,
+    borderTopColor: memorialColors.gold,
+  },
+  profileAvatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: memorialColors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: memorialSpacing.md,
+    ...memorialShadows.sm,
+  },
+  profileInitials: {
+    color: memorialColors.white,
+    fontSize: 32,
+    fontFamily: 'serif',
+    fontWeight: 'bold',
+  },
+  profileName: {
+    fontSize: memorialFonts.xl,
+    fontFamily: 'serif',
+    color: memorialColors.primary,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  profileId: {
+    fontSize: memorialFonts.sm,
+    color: memorialColors.textMuted,
+    marginBottom: memorialSpacing.lg,
+  },
+  profileStats: {
+    flexDirection: 'row',
+    width: '100%',
+    justifyContent: 'space-evenly',
+    borderTopWidth: 1,
+    borderTopColor: memorialColors.border,
+    paddingTop: memorialSpacing.md,
+  },
+  statItem: {
+    alignItems: 'center',
+  },
+  statDivider: {
+    width: 1,
+    height: '100%',
+    backgroundColor: memorialColors.border,
+  },
+  statLabel: {
+    fontSize: memorialFonts.xs,
+    color: memorialColors.textMuted,
+    textTransform: 'uppercase',
+  },
+  statValue: {
+    fontSize: memorialFonts.md,
+    color: memorialColors.textPrimary,
+    fontWeight: '600',
+  },
+
+  card: {
+    backgroundColor: memorialColors.white,
+    borderRadius: memorialBorderRadius.lg,
+    marginBottom: memorialSpacing.md,
+    ...memorialShadows.sm,
+    borderWidth: 1,
+    borderColor: memorialColors.silver,
+    overflow: 'hidden',
+  },
+  sectionHeader: {
+    backgroundColor: memorialColors.bgSecondary,
+    paddingVertical: memorialSpacing.sm,
+    paddingHorizontal: memorialSpacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: memorialColors.border,
+  },
+  sectionTitle: {
+    fontSize: memorialFonts.md,
+    fontFamily: 'serif',
+    color: memorialColors.primary,
+  },
+  sectionContent: {
+    padding: memorialSpacing.md,
+  },
+
+  gridContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  fieldRow: {
+    width: '48%',
+    marginBottom: memorialSpacing.sm,
+    paddingBottom: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.03)',
+  },
+  fieldRowFull: {
+    width: '100%',
+  },
+  fieldLabel: {
+    fontSize: memorialFonts.xs,
+    color: memorialColors.textMuted,
+    marginBottom: 2,
+  },
+  fieldValue: {
+    fontSize: memorialFonts.sm,
+    color: memorialColors.textPrimary,
+    fontWeight: '500',
+  },
+
+  note: {
+    color: memorialColors.textMuted,
+    fontStyle: 'italic',
+    fontSize: memorialFonts.sm,
+  },
+
+  benCard: {
+    backgroundColor: memorialColors.bgSecondary,
+    borderRadius: memorialBorderRadius.md,
+    padding: memorialSpacing.md,
+    borderLeftWidth: 3,
+    borderLeftColor: memorialColors.primaryLight,
+  },
+  benHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  benName: {
+    fontSize: memorialFonts.md,
+    fontWeight: '600',
+    color: memorialColors.primary,
+  },
+  benBadge: {
+    backgroundColor: memorialColors.primary,
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  benBadgeText: {
+    color: memorialColors.white,
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  benDetails: {
+    marginTop: 2,
+  },
+  benText: {
+    fontSize: memorialFonts.sm,
+    color: memorialColors.textSecondary,
+  },
+
+  actionBtn: {
+    backgroundColor: memorialColors.gold,
+    paddingVertical: memorialSpacing.md,
+    borderRadius: memorialBorderRadius.round,
+    alignItems: "center",
+    marginTop: memorialSpacing.md,
+    ...memorialShadows.md,
+  },
+  actionBtnText: {
+    color: memorialColors.primaryDark,
+    fontWeight: "bold",
+    fontSize: memorialFonts.md,
+    textTransform: 'uppercase',
+  },
 });

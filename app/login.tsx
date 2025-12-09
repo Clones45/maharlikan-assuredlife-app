@@ -104,8 +104,8 @@ export default function Login() {
         // ignore storage errors
       }
 
-      // D) Let web AuthGate know storage changed
-      if (typeof window !== "undefined") {
+      // D) Let web AuthGate know storage changed (Web only)
+      if (Platform.OS === 'web' && typeof window !== "undefined") {
         window.dispatchEvent(new Event("auth:changed"));
       }
 
@@ -232,10 +232,13 @@ export default function Login() {
 }
 
 /* ==================== STYLES ==================== */
+/* ==================== STYLES ==================== */
+import { memorialColors, memorialSpacing, memorialBorderRadius, memorialFonts, memorialShadows } from "../constants/memorialTheme";
+
 const s = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#e9eef7",
+    backgroundColor: memorialColors.primary, // Luxurious Green Background
     alignItems: "center",
     justifyContent: "center",
   },
@@ -252,72 +255,125 @@ const s = StyleSheet.create({
   watermark: {
     width: "80%",
     height: "80%",
-    opacity: 0.08,
+    opacity: 0.05,
+    tintColor: memorialColors.gold, // Gold tint for watermark
   },
 
-  cardWrap: { width: 420, maxWidth: "92%", alignItems: "center" },
-  logo: { width: 120, height: 120, marginBottom: 4 },
-  h1: { fontWeight: "800", fontSize: 20, marginBottom: 12, color: "#0d3b7a" },
+  cardWrap: {
+    width: 420,
+    maxWidth: "92%",
+    alignItems: "center"
+  },
+  logo: {
+    width: 120,
+    height: 120,
+    marginBottom: memorialSpacing.md,
+    // Optional: Add a subtle glow or shadow to logo if possible, or keep clean
+  },
+  h1: {
+    fontWeight: memorialFonts.bold,
+    fontSize: memorialFonts.xxl,
+    marginBottom: memorialSpacing.xl,
+    color: memorialColors.white, // White text on green bg
+    letterSpacing: memorialFonts.letterSpacing.wide,
+    textAlign: "center",
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
+  },
 
+  // 💎 LUXURIOUS: Premium Glass/Gold Card
   card: {
     width: "100%",
-    backgroundColor: "#ffffff",
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: "#dbe4f1",
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 2,
+    backgroundColor: memorialColors.white,
+    borderRadius: memorialBorderRadius.xl,
+    padding: memorialSpacing.xxl,
+    borderWidth: 2,
+    borderColor: memorialColors.gold, // Gold border
+    ...memorialShadows.xl, // Deep shadow
   },
   title: {
     textAlign: "center",
-    fontWeight: "700",
-    fontSize: 16,
-    marginBottom: 12,
-    color: "#0d3b7a",
+    fontWeight: memorialFonts.bold,
+    fontSize: memorialFonts.lg,
+    marginBottom: memorialSpacing.lg,
+    color: memorialColors.primary,
+    letterSpacing: memorialFonts.letterSpacing.wide,
   },
+
+  // 💎 LUXURIOUS: Inputs
   input: {
-    backgroundColor: "#fff",
+    backgroundColor: memorialColors.pearl,
     borderWidth: 1,
-    borderColor: "#cbd5e1",
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 10,
+    borderColor: memorialColors.silver,
+    borderRadius: memorialBorderRadius.md,
+    padding: memorialSpacing.lg,
+    marginBottom: memorialSpacing.md,
+    fontSize: memorialFonts.md,
+    color: memorialColors.black,
   },
 
   /* 👁 Password field with eye icon */
   passwordWrap: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#fff",
+    backgroundColor: memorialColors.pearl,
     borderWidth: 1,
-    borderColor: "#cbd5e1",
-    borderRadius: 10,
-    paddingRight: 8,
-    marginBottom: 10,
+    borderColor: memorialColors.silver,
+    borderRadius: memorialBorderRadius.md,
+    paddingRight: memorialSpacing.sm,
+    marginBottom: memorialSpacing.md,
   },
   passwordInput: {
     flex: 1,
-    padding: 12,
+    padding: memorialSpacing.lg,
+    fontSize: memorialFonts.md,
+    color: memorialColors.black,
   },
   eyeBtn: {
-    padding: 6,
+    padding: memorialSpacing.sm,
   },
 
+  // 💎 LUXURIOUS: Primary Button
   btn: {
-    backgroundColor: "#0b4aa2",
-    padding: 14,
-    borderRadius: 10,
+    backgroundColor: memorialColors.primary,
+    padding: memorialSpacing.lg,
+    borderRadius: memorialBorderRadius.md,
     alignItems: "center",
+    marginTop: memorialSpacing.sm,
+    ...memorialShadows.md,
+    borderWidth: 1,
+    borderColor: memorialColors.primaryLight,
   },
-  btnText: { color: "#fff", fontWeight: "800" },
+  btnText: {
+    color: memorialColors.white,
+    fontWeight: memorialFonts.bold,
+    fontSize: memorialFonts.md,
+    letterSpacing: memorialFonts.letterSpacing.wide,
+  },
 
-  publicLink: { color: "#0b4aa2", fontWeight: "800" },
-  publicLinkMuted: { color: "#0b4aa2", opacity: 0.8, fontWeight: "700" },
+  publicLink: {
+    color: memorialColors.primary,
+    fontWeight: memorialFonts.semibold,
+    fontSize: memorialFonts.sm,
+  },
+  publicLinkMuted: {
+    color: memorialColors.textMuted,
+    opacity: 0.8,
+    fontWeight: memorialFonts.medium
+  },
 
-  err: { color: "#b91c1c", marginBottom: 8, textAlign: "center" },
-  footerYear: { marginTop: 10, color: "#6b7280", fontSize: 12 },
+  err: {
+    color: memorialColors.error,
+    marginBottom: memorialSpacing.sm,
+    textAlign: "center",
+    fontSize: memorialFonts.sm,
+    fontWeight: memorialFonts.medium,
+  },
+  footerYear: {
+    marginTop: memorialSpacing.xl,
+    color: memorialColors.goldLight, // Gold text on green bg
+    fontSize: memorialFonts.xs,
+    opacity: 0.8,
+  },
 });

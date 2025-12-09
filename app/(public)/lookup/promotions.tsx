@@ -1,6 +1,7 @@
 import React from "react";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { WebView } from "react-native-webview";
+import { memorialColors } from "../../../constants/memorialTheme";
 
 export default function PromotionsScreen() {
   const websiteURL = "https://www.maharlikanassuredlife.com";
@@ -12,7 +13,7 @@ export default function PromotionsScreen() {
         startInLoadingState
         renderLoading={() => (
           <View style={styles.loader}>
-            <ActivityIndicator size="large" color="#0b4aa2" />
+            <ActivityIndicator size="large" color={memorialColors.primary} />
           </View>
         )}
         style={styles.webview}
@@ -24,16 +25,16 @@ export default function PromotionsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: memorialColors.white,
   },
   webview: {
     flex: 1,
-    marginTop: 0, // ⬅️ removed the gap
+    marginTop: 0,
   },
   loader: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#eef3fb",
+    backgroundColor: memorialColors.primary,
   },
 });

@@ -10,12 +10,20 @@ import {
   Alert,
   ScrollView,
   useWindowDimensions,
+  Platform,
+  UIManager
 } from 'react-native';
 import { useLocalSearchParams, Stack } from 'expo-router';
 import { supabase } from '../../../lib/supabase';
 import BackButton from '../../../components/BackButton';
+import BackgroundLogo from '../../../components/BackgroundLogo';
+import { memorialColors, memorialSpacing, memorialBorderRadius, memorialFonts, memorialShadows } from '../../../constants/memorialTheme';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 type AnyNum = number | string | null | undefined;
 type AnyStr = string | null | undefined;
@@ -88,12 +96,12 @@ export default function SOAScreen() {
           Number(s.monthly_due) > 0
             ? Number(s.monthly_due)
             : plan.includes('A1')
-            ? 498
-            : plan.includes('B1')
-            ? 348
-            : plan.includes('A2')
-            ? 500
-            : 350;
+              ? 498
+              : plan.includes('B1')
+                ? 348
+                : plan.includes('A2')
+                  ? 500
+                  : 350;
         const months = monthlyDue > 0 ? Number(s.total_paid || 0) / monthlyDue : 0;
         (s as any).installment = months.toFixed(1);
       }
@@ -161,11 +169,11 @@ export default function SOAScreen() {
     const txnRows = txns
       .map(
         (r) => `
-      <tr>
-        <td>${datePH(r.date)}</td>
-        <td class="num">${peso(r.amount)}</td>
-        <td>${esc(r.plan_type)}</td>
-        <td>${esc(r.or_no)}</td>
+      <tr style="border-bottom: 1px solid #eee;">
+        <td style="padding: 8px;">${datePH(r.date)}</td>
+        <td style="padding: 8px; text-align: right; color: #0d3b7a; font-weight: bold;">${peso(r.amount)}</td>
+        <td style="padding: 8px;">${esc(r.plan_type)}</td>
+        <td style="padding: 8px; text-align: center;">${esc(r.or_no)}</td>
       </tr>`
       )
       .join('');
@@ -173,27 +181,56 @@ export default function SOAScreen() {
     return `
 <!doctype html>
 <html>
-<head><meta charset="utf-8"/>
-<title>Statement of Account</title></head>
+<head>
+<meta charset="utf-8"/>
+<title>Statement of Account</title>
+<style>
+  body { font-family: 'Times New Roman', serif; padding: 40px; color: #333; }
+  h1 { color: #0d3b7a; text-align: center; font-size: 24px; margin-bottom: 4px; }
+  h2 { text-align: center; font-size: 16px; color: #666; font-weight: normal; margin-top: 0; margin-bottom: 30px; letter-spacing: 2px; text-transform: uppercase; }
+  .info-box { margin-bottom: 30px; border: 1px solid #ccc; padding: 20px; }
+  .info-row { margin-bottom: 8px; }
+  .label { font-weight: bold; width: 80px; display: inline-block; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 30px; }
+  th { background: #f0f4fa; color: #0d3b7a; text-align: left; padding: 10px; border-bottom: 2px solid #0d3b7a; font-size: 12px; text-transform: uppercase; }
+  td { padding: 10px; border-bottom: 1px solid #eee; font-size: 14px; }
+  .num { text-align: right; font-weight: bold; }
+  .center { text-align: center; }
+  .footer { margin-top: 50px; text-align: center; font-size: 10px; color: #999; border-top: 1px solid #eee; padding-top: 10px; }
+</style>
+</head>
 <body>
-<h2>Maharlikan AssuredLife</h2>
-<p><b>AF No:</b> ${esc(s?.maf_no)}<br><b>Name:</b> ${esc(
-      [s?.last_name, s?.first_name].filter(Boolean).join(', ')
-    )}<br><b>Agent:</b> ${esc(agentName)}</p>
-<table border="1" cellspacing="0" cellpadding="6" width="100%">
-<thead><tr><th>Plan</th><th>Contract</th><th>Paid</th><th>Inst.</th><th>Bal.</th></tr></thead>
-<tbody><tr>
-<td>${esc(s?.plan_type)}</td>
-<td>${peso(s?.contracted_price)}</td>
-<td>${peso(s?.total_paid)}</td>
-<td>${s?.installment}</td>
-<td>${peso(s?.balance)}</td>
-</tr></tbody></table>
-<h3>Transactions</h3>
-<table border="1" cellspacing="0" cellpadding="6" width="100%">
-<thead><tr><th>Date</th><th>Payment</th><th>Plan</th><th>OR No</th></tr></thead>
-<tbody>${txnRows}</tbody>
-</table></body></html>`;
+  <h1>Maharlikan AssuredLife</h1>
+  <h2>Statement of Account</h2>
+  
+  <div class="info-box">
+    <div class="info-row"><span class="label">Name:</span> ${esc([s?.last_name, s?.first_name].filter(Boolean).join(', '))}</div>
+    <div class="info-row"><span class="label">AF No:</span> ${esc(s?.maf_no)}</div>
+    <div class="info-row"><span class="label">Agent:</span> ${esc(agentName)}</div>
+    <div class="info-row"><span class="label">Date:</span> ${new Date().toLocaleDateString()}</div>
+  </div>
+
+  <table border="0">
+    <thead><tr><th>Plan</th><th class="num">Contract</th><th class="num">Total Paid</th><th class="center">Inst. (mo)</th><th class="num">Balance</th></tr></thead>
+    <tbody><tr>
+      <td>${esc(s?.plan_type)}</td>
+      <td class="num">${peso(s?.contracted_price)}</td>
+      <td class="num">${peso(s?.total_paid)}</td>
+      <td class="center">${s?.installment}</td>
+      <td class="num" style="color: #d97706;">${peso(s?.balance)}</td>
+    </tr></tbody>
+  </table>
+
+  <h3>Transaction History</h3>
+  <table border="0">
+    <thead><tr><th>Date</th><th class="num">Payment</th><th>Details</th><th class="center">OR No</th></tr></thead>
+    <tbody>${txnRows}</tbody>
+  </table>
+  
+  <div class="footer">
+    Generated via Maharlikan AssuredLife Mobile Agent App
+  </div>
+</body></html>`;
   }, [summary, txns, agentName]);
 
   const onExportPdf = useCallback(async () => {
@@ -215,201 +252,296 @@ export default function SOAScreen() {
     () => (
       <View style={styles.thRow}>
         <Text style={[styles.th, { flex: 0.9 }]}>Date</Text>
-        <Text style={[styles.th, { flex: 1.1 }]}>Payment</Text>
-        <Text style={[styles.th, { flex: 0.9 }]}>Plan Type</Text>
-        <Text style={[styles.th, { flex: 0.6 }]}>OR No</Text>
+        <Text style={[styles.th, { flex: 1.1, textAlign: 'right' }]}>Amount</Text>
+        <Text style={[styles.th, { flex: 0.9, textAlign: 'center' }]}>Plan</Text>
+        <Text style={[styles.th, { flex: 0.8, textAlign: 'center' }]}>OR No</Text>
       </View>
     ),
     []
   );
 
   return (
-    <ScrollView style={styles.container}>
-      <Stack.Screen
-        options={{
-          title: 'Statement of Account',
-          headerLeft: () => <BackButton />,
-          headerRight: () => (
-            <TouchableOpacity onPress={onExportPdf} style={styles.exportBtn}>
-              <Text style={styles.exportText}>Export PDF</Text>
-            </TouchableOpacity>
-          ),
-        }}
-      />
+    <BackgroundLogo>
+      <View style={styles.container}>
+        <Stack.Screen
+          options={{
+            headerTitle: 'SOA',
+            headerTitleStyle: { fontFamily: 'serif', color: memorialColors.primary },
+            headerLeft: () => <BackButton />,
+            headerBackTitle: "Back",
+            headerRight: () => (
+              <TouchableOpacity onPress={onExportPdf} style={styles.exportBtn}>
+                <Text style={styles.exportText}>Export PDF</Text>
+              </TouchableOpacity>
+            ),
+            headerTransparent: true,
+            headerBlurEffect: 'regular',
+            headerBackground: () => <View style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.85)' }} />
+          }}
+        />
 
-<View style={styles.card}>
-  <Text style={styles.h1}>Maharlikan AssuredLife</Text>
-  <Text style={styles.meta}>Statement of Account</Text>
+        <ScrollView contentContainerStyle={{ padding: memorialSpacing.lg, paddingTop: 100, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
 
-  <View style={{ height: 12 }} />
+          {/* Header Card */}
+          <View style={styles.card}>
+            <View style={styles.headerBlock}>
+              <Text style={styles.brandTitle}>Maharlikan AssuredLife</Text>
+              <Text style={styles.docTitle}>STATEMENT OF ACCOUNT</Text>
+            </View>
 
-  <Text><Text style={styles.label}>AF No:</Text> {summary?.maf_no ?? ''}</Text>
-  <Text><Text style={styles.label}>Name:</Text> {[summary?.last_name, summary?.first_name].filter(Boolean).join(', ')}</Text>
-  <Text><Text style={styles.label}>Agent:</Text> {agentName || '—'}</Text>
-
-  <View style={{ height: 16 }} />
-
-  {/* --- Two-Row Summary Layout --- */}
-  <View style={styles.table}>
-    {/* Row 1 header */}
-    <View style={[styles.thRow, { borderBottomWidth: 1, borderColor: '#d1d5db' }]}>
-      <Text style={[styles.th, { flex: 1.3 }]}>Plan Type</Text>
-      <Text style={[styles.th, { flex: 1 }]}>Contracted Price</Text>
-      <Text style={[styles.th, { flex: 0.9 }]}>Total Paid</Text>
-    </View>
-    {/* Row 1 content */}
-    <View style={[styles.trRow, { paddingVertical: 10 }]}>
-      <Text style={[styles.td, { flex: 1.4 }]}>{summary?.plan_type ?? ''}</Text>
-      <Text style={[styles.tdPrice, { flex: 1 }]}>{peso(summary?.contracted_price)}</Text>
-      <Text style={[styles.tdPrice, { flex: 1 }]}>{peso(summary?.total_paid)}</Text>
-    </View>
-
-    {/* nice spacing divider */}
-    <View style={{ borderBottomWidth: 1, borderColor: '#e5e7eb', marginVertical: 10 }} />
-
-    {/* Row 2 header */}
-    <View style={[styles.thRow, { borderBottomWidth: 1, borderColor: '#d1d5db' }]}>
-      <Text style={[styles.th, { flex: 0.4 }]}>Installment (mo.)</Text>
-      <Text style={[styles.th, { flex: 0.3 }]}>Balance</Text>
-    </View>
-    {/* Row 2 content */}
-    <View style={[styles.trRow, { paddingVertical: 10 }]}>
-      <Text style={[styles.tdCenter, { flex: 1.1 }]}>
-        {summary?.installment ? `${summary.installment} mo.` : '—'}
-      </Text>
-      <Text style={[styles.tdPrice, { flex: 1.5 }]}>{peso(summary?.balance)}</Text>
-    </View>
-  </View>
-</View>
-
-
-      <View style={styles.card}>
-        <Text style={styles.h2}>Transaction Details</Text>
-        {loading ? (
-          <Text>Loading…</Text>
-        ) : txns.length === 0 ? (
-          <Text>No transactions found</Text>
-        ) : (
-          <FlatList
-            scrollEnabled={false}
-            data={txns}
-            keyExtractor={(_, i) => String(i)}
-            renderItem={({ item }) => (
-              <View style={styles.trRow}>
-                <Text style={[styles.td, { flex: 0.9 }]}>{datePH(item.date)}</Text>
-                <Text style={[styles.tdPrice, { flex: 1.1 }]}>{peso(item.amount)}</Text>
-                <Text style={[styles.td, { flex: 0.9 }]}>{item.plan_type ?? ''}</Text>
-                <Text style={[styles.tdCenter, { flex: 0.6   }]}>{item.or_no ?? '—'}</Text>
+            <View style={styles.metaGrid}>
+              <View style={styles.metaRow}>
+                <Text style={styles.metaLabel}>Member:</Text>
+                <Text style={styles.metaValue}>{[summary?.last_name, summary?.first_name].filter(Boolean).join(', ')}</Text>
               </View>
+              <View style={styles.metaRow}>
+                <Text style={styles.metaLabel}>AF Number:</Text>
+                <Text style={styles.metaValue}>{summary?.maf_no || '—'}</Text>
+              </View>
+              <View style={styles.metaRow}>
+                <Text style={styles.metaLabel}>Agent:</Text>
+                <Text style={styles.metaValue}>{agentName || '—'}</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Account Summary Table */}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Account Summary</Text>
+          </View>
+
+          <View style={styles.summaryCard}>
+            <View style={styles.summaryRow}>
+              <View style={styles.summaryItem}>
+                <Text style={styles.summaryLabel}>Plan Type</Text>
+                <Text style={styles.summaryValue}>{summary?.plan_type ?? '—'}</Text>
+              </View>
+              <View style={[styles.summaryItem, { alignItems: 'flex-end' }]}>
+                <Text style={styles.summaryLabel}>Contract Price</Text>
+                <Text style={styles.summaryValue}>{peso(summary?.contracted_price)}</Text>
+              </View>
+            </View>
+
+            <View style={styles.divider} />
+
+            <View style={styles.summaryRow}>
+              <View style={styles.summaryItem}>
+                <Text style={styles.summaryLabel}>Total Paid</Text>
+                <Text style={[styles.summaryValue, { color: memorialColors.primary }]}>{peso(summary?.total_paid)}</Text>
+              </View>
+              <View style={[styles.summaryItem, { alignItems: 'flex-end' }]}>
+                <Text style={styles.summaryLabel}>Balance</Text>
+                <Text style={[styles.summaryValue, { color: memorialColors.error }]}>{peso(summary?.balance)}</Text>
+              </View>
+            </View>
+
+            <View style={styles.divider} />
+            <View style={styles.summaryRow}>
+              <View style={styles.summaryItem}>
+                <Text style={styles.summaryLabel}>Installment Status</Text>
+                <Text style={styles.summaryValue}>{summary?.installment ? `${summary.installment} months` : '—'}</Text>
+              </View>
+            </View>
+          </View>
+
+
+          {/* Transactions Table */}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Transaction History</Text>
+          </View>
+
+          <View style={styles.tableCard}>
+            {ListHeader}
+            {loading ? (
+              <Text style={styles.loadingText}>Loading history...</Text>
+            ) : txns.length === 0 ? (
+              <Text style={styles.emptyText}>No transactions found</Text>
+            ) : (
+              <FlatList
+                scrollEnabled={false}
+                data={txns}
+                keyExtractor={(_, i) => String(i)}
+                renderItem={({ item }) => (
+                  <View style={styles.trRow}>
+                    <Text style={[styles.td, { flex: 0.9 }]}>{datePH(item.date)}</Text>
+                    <Text style={[styles.tdPrice, { flex: 1.1 }]}>{peso(item.amount)}</Text>
+                    <Text style={[styles.tdCenter, { flex: 0.9 }]}>{item.plan_type ?? '-'}</Text>
+                    <Text style={[styles.tdCenter, { flex: 0.8 }]}>{item.or_no ?? '—'}</Text>
+                  </View>
+                )}
+              />
             )}
-            ListHeaderComponent={ListHeader}
-          />
-        )}
+          </View>
+
+        </ScrollView>
       </View>
-    </ScrollView>
+    </BackgroundLogo>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#eef3fb', padding: 16 },
+  container: { flex: 1 },
 
-  exportBtn: { paddingHorizontal: 8, paddingVertical: 4 },
-  exportText: { color: '#0d3b7a', fontWeight: '800' },
+  exportBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: memorialColors.gold,
+    borderRadius: memorialBorderRadius.round
+  },
+  exportText: {
+    color: memorialColors.primaryDark,
+    fontWeight: 'bold',
+    fontSize: memorialFonts.sm
+  },
+
+  headerBlock: {
+    alignItems: 'center',
+    marginBottom: memorialSpacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: memorialColors.paleGold,
+    paddingBottom: memorialSpacing.md,
+  },
+  brandTitle: {
+    fontSize: memorialFonts.lg,
+    fontFamily: 'serif',
+    color: memorialColors.primary,
+    fontWeight: 'bold',
+  },
+  docTitle: {
+    fontSize: memorialFonts.sm,
+    color: memorialColors.textMuted,
+    letterSpacing: 2,
+    marginTop: 2,
+  },
 
   card: {
     backgroundColor: '#fff',
-    borderRadius: 10,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    marginBottom: 18,
-    borderWidth: 1,
-    borderColor: '#d7dee9',
+    borderRadius: memorialBorderRadius.lg,
+    padding: memorialSpacing.lg,
+    marginBottom: memorialSpacing.lg,
+    ...memorialShadows.md,
+    borderTopWidth: 4,
+    borderTopColor: memorialColors.primary,
   },
 
-  h1: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#0b4aa2',
+  metaGrid: {
+    gap: 8,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  metaLabel: {
+    fontSize: memorialFonts.sm,
+    color: memorialColors.textMuted,
+    fontWeight: '600',
+  },
+  metaValue: {
+    fontSize: memorialFonts.sm,
+    color: memorialColors.textPrimary,
+    fontWeight: 'bold',
+  },
+
+  sectionHeader: {
+    marginBottom: memorialSpacing.sm,
+    paddingLeft: memorialSpacing.xs,
+  },
+  sectionTitle: {
+    fontSize: memorialFonts.md,
+    fontFamily: 'serif',
+    color: memorialColors.primary,
+    fontWeight: 'bold',
+  },
+
+  summaryCard: {
+    backgroundColor: memorialColors.white,
+    padding: memorialSpacing.lg,
+    borderRadius: memorialBorderRadius.lg,
+    borderWidth: 1,
+    borderColor: memorialColors.silver,
+    marginBottom: memorialSpacing.lg,
+    ...memorialShadows.sm,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  summaryItem: {
+    flex: 1,
+  },
+  summaryLabel: {
+    fontSize: memorialFonts.xs,
+    color: memorialColors.textMuted,
+    textTransform: 'uppercase',
     marginBottom: 2,
   },
-  meta: {
-    color: '#6b7280',
-    fontSize: 13,
-    marginBottom: 8,
+  summaryValue: {
+    fontSize: memorialFonts.md,
+    color: memorialColors.textPrimary,
+    fontWeight: 'bold',
   },
-  label: {
-    fontWeight: '700',
-    color: '#111827',
+  divider: {
+    height: 1,
+    backgroundColor: memorialColors.border,
+    marginVertical: memorialSpacing.md,
   },
 
-  table: {
-    marginTop: 10,
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
+  tableCard: {
+    backgroundColor: memorialColors.white,
+    borderRadius: memorialBorderRadius.lg,
     overflow: 'hidden',
-    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: memorialColors.silver,
+    ...memorialShadows.sm,
+    marginBottom: memorialSpacing.xl,
   },
-
   thRow: {
     flexDirection: 'row',
-    backgroundColor: '#e8edf8',
+    backgroundColor: memorialColors.bgSecondary,
     borderBottomWidth: 1,
-    borderColor: '#d1d5db',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
+    borderColor: memorialColors.border,
+    paddingVertical: memorialSpacing.sm,
+    paddingHorizontal: memorialSpacing.md,
   },
-
   th: {
-    fontWeight: '700',
-    color: '#0b4aa2',
-    fontSize: 12.5,
-    textAlign: 'center',
+    fontWeight: 'bold',
+    color: memorialColors.primary,
+    fontSize: memorialFonts.xs,
+    textTransform: 'uppercase',
   },
-
   trRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     borderBottomWidth: 1,
-    borderColor: '#f1f3f9',
-    paddingVertical: 7,
-    paddingHorizontal: 10,
+    borderColor: memorialColors.bgSecondary,
+    paddingVertical: memorialSpacing.sm, // reduced padding for density
+    paddingHorizontal: memorialSpacing.md,
+    backgroundColor: memorialColors.white,
   },
-
-  // --- Data cells ---
   td: {
-    flex: 1,
-    color: '#111827',
-    fontSize: 13,
-    textAlign: 'center',
+    color: memorialColors.textPrimary,
+    fontSize: memorialFonts.sm,
   },
   tdPrice: {
-    color: '#0d3b7a',
-    fontWeight: '700',
-    fontSize: 13,
+    color: memorialColors.primary,
+    fontWeight: 'bold',
+    fontSize: memorialFonts.sm,
     textAlign: 'right',
-    letterSpacing: 0.3,
-    paddingRight: 6, // ensures spacing before next column
   },
   tdCenter: {
-    flex: 1,
     textAlign: 'center',
-    color: '#111827',
-    fontSize: 13,
+    color: memorialColors.textSecondary,
+    fontSize: memorialFonts.sm,
   },
 
-  h2: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0b4aa2',
-    marginBottom: 8,
+  loadingText: {
+    textAlign: 'center',
+    padding: memorialSpacing.lg,
+    color: memorialColors.textMuted,
+    fontStyle: 'italic',
   },
-
-  divider: {
-    borderBottomWidth: 1,
-    borderColor: '#e5e7eb',
-    marginVertical: 8,
+  emptyText: {
+    textAlign: 'center',
+    padding: memorialSpacing.lg,
+    color: memorialColors.textMuted,
   },
 });

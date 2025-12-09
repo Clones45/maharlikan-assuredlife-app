@@ -19,81 +19,117 @@ type Notification = {
   is_read: boolean;
   target_role: string | null;
   user_id: string | null;
+  extra?: any;
   created_at: string;
 };
 
-export default function NotificationDropdown({ userId }: { userId: string }) {
+export default function NotificationDropdown({
+  userId,
+  agentId,
+  role, // NEW: pass "agent" or "admin"
+}: {
+  userId: string;
+  agentId?: number | null;
+  role: "agent" | "admin";
+}) {
   const [visible, setVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
-  // ✅ ONLY FETCH NOTIFICATIONS FOR THIS USER ONLY
+  // ============================================================
+  // FETCH NOTIFICATIONS (FULLY FIXED)
+  // ============================================================
   const fetchNotifications = async () => {
     setLoading(true);
 
-    const { data, error } = await supabase
+    let query = supabase
       .from("notifications")
       .select("*")
-      .eq("user_id", userId) // ✅ FIXED: only this user
       .order("created_at", { ascending: false })
-      .limit(20);
+      .limit(50);
 
+    // FIXED: Correct filtering for roles
+    if (role === "agent") {
+      query = query.eq("user_id", userId);
+    } else if (role === "admin") {
+      query = query.eq("target_role", "admin");
+    }
+
+    const { data, error } = await query;
+
+    if (error) console.error("Notif Fetch Error:", error);
     if (data) setNotifications(data);
-    if (error) console.error(error);
 
     setLoading(false);
   };
 
+  // ============================================================
+  // MARK AS READ
+  // ============================================================
   const markAsRead = async () => {
-    const unreadIds = notifications
-      .filter((n) => !n.is_read)
-      .map((n) => n.id);
+    const unreadIds = notifications.filter(n => !n.is_read).map(n => n.id);
 
-    if (unreadIds.length > 0) {
-      await supabase
-        .from("notifications")
-        .update({ is_read: true })
-        .in("id", unreadIds);
+    if (unreadIds.length === 0) return;
 
-      setNotifications((prev) =>
-        prev.map((n) => ({ ...n, is_read: true }))
-      );
-    }
+    setNotifications(prev =>
+      prev.map(n => ({ ...n, is_read: true }))
+    );
+
+    await supabase
+      .from("notifications")
+      .update({ is_read: true })
+      .in("id", unreadIds);
   };
 
   useEffect(() => {
-    const load = async () => {
-      await fetchNotifications();
-    };
+    fetchNotifications();
 
-    load();
-
-    // ✅ REALTIME: only push notif if it belongs to THIS user
-    const sub = supabase
-      .channel("notif-realtime")
+    // REAL-TIME SYNC
+    const channel = supabase
+      .channel("notif-dropdown-sync")
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "notifications" },
-        (payload) => {
+        { event: "*", schema: "public", table: "notifications" },
+        payload => {
           const n = payload.new as Notification;
 
-          // ✅ Only this user's notification is allowed here
-          if (n.user_id === userId) {
-            setNotifications((prev) => [n, ...prev]);
+          // FIXED: Relevance check by user role
+          let isRelevant = false;
+
+          if (role === "agent" && n.user_id === userId) {
+            isRelevant = true;
+          }
+
+          if (role === "admin" && n.target_role === "admin") {
+            isRelevant = true;
+          }
+
+          if (!isRelevant) return;
+
+          if (payload.eventType === "INSERT") {
+            setNotifications(prev => [n, ...prev]);
+          }
+
+          if (payload.eventType === "UPDATE") {
+            setNotifications(prev =>
+              prev.map(item => (item.id === n.id ? n : item))
+            );
           }
         }
       )
       .subscribe();
 
     return () => {
-      void supabase.removeChannel(sub);
+      supabase.removeChannel(channel);
     };
-  }, []);
+  }, [userId, role]);
 
   const toggleDropdown = () => {
     setVisible(!visible);
     if (!visible) markAsRead();
   };
+
+  const unreadCount = notifications.filter(n => !n.is_read).length;
 
   const formatTime = (t: string) => {
     const d = new Date(t);
@@ -105,64 +141,65 @@ export default function NotificationDropdown({ userId }: { userId: string }) {
     });
   };
 
+  const getNotificationIcon = (type: string) => {
+    if (type === "withdrawal_status") return "cash-outline";
+    if (type === "payout_request") return "cash-outline";
+    return "notifications";
+  };
+
+  const getNotificationColor = (type: string) => {
+    if (type === "withdrawal_status") return "#16a34a";
+    if (type === "payout_request") return "#fbbf24";
+    return "#0b4aa2";
+  };
+
   return (
     <View>
       <TouchableOpacity onPress={toggleDropdown}>
         <Ionicons name="notifications-outline" size={26} color="#fff" />
-        {notifications.some((n) => !n.is_read) && <View style={styles.badge} />}
+        {unreadCount > 0 && <View style={styles.badge} />}
       </TouchableOpacity>
 
       <Modal visible={visible} transparent animationType="fade">
-        <TouchableOpacity
-          style={styles.overlay}
-          activeOpacity={1}
-          onPress={toggleDropdown}
-        >
+        <View style={styles.overlay}>
+          {/* Backdrop - Closes Modal */}
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={toggleDropdown}
+          />
+
           <View style={styles.dropdown}>
             <Text style={styles.header}>Notifications</Text>
 
-            {loading ? (
-              <ActivityIndicator
-                color="#0b4aa2"
-                style={{ marginVertical: 20 }}
-              />
+            {loading && notifications.length === 0 ? (
+              <ActivityIndicator color="#0b4aa2" style={{ marginVertical: 20 }} />
             ) : notifications.length === 0 ? (
               <Text style={styles.empty}>No notifications yet</Text>
             ) : (
               <FlatList
                 data={notifications}
-                keyExtractor={(item) => item.id.toString()}
+                keyExtractor={item => item.id.toString()}
+                style={{ flexShrink: 1 }}
                 renderItem={({ item }) => (
                   <View style={styles.item}>
                     <Ionicons
-                      name={
-                        item.type?.includes("payout")
-                          ? "cash-outline"
-                          : "notifications"
-                      }
+                      name={getNotificationIcon(item.type) as any}
                       size={20}
-                      color={
-                        item.type === "payout_released"
-                          ? "#16a34a"
-                          : item.type === "payout_request"
-                          ? "#fbbf24"
-                          : "#0b4aa2"
-                      }
+                      color={getNotificationColor(item.type)}
                       style={{ marginRight: 8, marginTop: 2 }}
                     />
                     <View style={{ flex: 1 }}>
                       <Text style={styles.title}>{item.title}</Text>
                       <Text style={styles.message}>{item.message}</Text>
-                      <Text style={styles.time}>
-                        {formatTime(item.created_at)}
-                      </Text>
+                      <Text style={styles.time}>{formatTime(item.created_at)}</Text>
                     </View>
                   </View>
                 )}
               />
             )}
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
     </View>
   );

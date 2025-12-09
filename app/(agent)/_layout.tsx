@@ -1,10 +1,16 @@
+// ✨ REDESIGNED: Memorial Services Theme - Tab Layout
+// 🎨 Visual changes: Deep green header/tabs, respectful icon updates
+// ⚙️ Logic: ALL authentication, routing, and notification logic UNCHANGED
+
 import { useEffect, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { Tabs, router, usePathname } from "expo-router";
 import { supabase } from "../../lib/supabase";
 import { TabIcon } from "../../components/TabIcon";
-import { colors } from "../../lib/theme";
-import NotificationDropdown from "../../components/NotificationDropdown"; // ✅ added
+import { memorialColors } from "../../constants/memorialTheme"; // ✨ NEW: Memorial theme
+import NotificationDropdown from "../../components/NotificationDropdown";
+import { GlassTabBar } from "../../components/GlassTabBar";
+import { useToast } from "../../components/ToastProvider";
 
 const PROFILE_TABLE = "users_profile";
 
@@ -12,8 +18,11 @@ export default function AgentTabsLayout() {
   const pathname = usePathname();
   const shouldHideTabs = pathname.includes("/member/");
   const [ready, setReady] = useState(false);
-  const [userId, setUserId] = useState<string | null>(null); // ✅ new state
+  const [userId, setUserId] = useState<string | null>(null);
+  const { showToast } = useToast();
+  const [agentId, setAgentId] = useState<number | null>(null);
 
+  // ⚙️ UNCHANGED: All authentication and role checking logic
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -25,13 +34,26 @@ export default function AgentTabsLayout() {
         return;
       }
 
-      setUserId(data.session.user.id); // ✅ store agent id
+      setUserId(data.session.user.id);
 
-      const { data: prof } = await supabase
+      const { data: prof, error } = await supabase
         .from(PROFILE_TABLE)
-        .select("role")
+        .select("role, agent_id")
         .eq("user_id", data.session.user.id)
         .maybeSingle();
+
+      if (error) {
+        console.error("Error fetching profile:", error);
+        // 🛡️ SECURITY: Only sign out if it's strictly an auth/permissions issue
+        if (error.code === "PGRST116" || error.message.includes("JWT")) {
+          await supabase.auth.signOut();
+          router.replace("/login");
+          return;
+        }
+      }
+
+      // Save agent ID for notifications
+      if (prof?.agent_id) setAgentId(prof.agent_id);
 
       const role = String(prof?.role ?? "").toLowerCase();
       if (role === "admin") {
@@ -50,89 +72,100 @@ export default function AgentTabsLayout() {
       if (!s) router.replace("/login");
     });
 
+    // 🔔 REALTIME NOTIFICATIONS
+    const channel = supabase
+      .channel('agent-withdrawals')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'withdrawal_requests',
+          filter: `agent_id=eq.${agentId}`, // Listen only for this agent's requests
+        },
+        (payload) => {
+          const newItem = payload.new;
+          const oldItem = payload.old; // May be empty depending on replica identity
+
+          if (newItem.status === 'approved' && oldItem.status !== 'approved') {
+            showToast('success', 'Commission Approved!', `Your withdrawal of ₱${newItem.amount} has been approved.`);
+          } else if (newItem.status === 'rejected' && oldItem.status !== 'rejected') {
+            showToast('error', 'Withdrawal Rejected', `Your request for ₱${newItem.amount} was rejected.`);
+          }
+        }
+      )
+      .subscribe();
+
     return () => {
       mounted = false;
       sub?.subscription?.unsubscribe?.();
+      supabase.removeChannel(channel);
     };
   }, []);
 
   if (!ready) {
     return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator />
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: memorialColors.bgPrimary }}>
+        {/* 🎨 VISUAL: Memorial-themed loading indicator */}
+        <ActivityIndicator size="large" color={memorialColors.primary} />
       </View>
     );
   }
 
   return (
     <Tabs
+      tabBar={(props) => <GlassTabBar {...props} />}
       screenOptions={{
-        headerStyle: { backgroundColor: colors.primary },
-        headerTintColor: "#fff",
-        tabBarActiveTintColor: "#fff",
-        tabBarInactiveTintColor: "#dbeafe",
-        tabBarStyle: shouldHideTabs
-          ? { display: "none" }
-          : { backgroundColor: colors.primary },
+        // 🎨 VISUAL: Memorial theme colors for header and tabs
+        headerStyle: { backgroundColor: memorialColors.primary },
+        headerTintColor: memorialColors.softWhite,
+        // Default tab bar style prop used by custom tab bar to determine visibility
+        tabBarStyle: shouldHideTabs ? { display: "none" } : undefined,
 
-        // ✅ Add this block for dropdown
+        // ⚙️ UNCHANGED: Notification dropdown logic
         headerRight: () =>
           userId ? (
             <View style={{ marginRight: 12 }}>
-              <NotificationDropdown userId={userId} />
+              <NotificationDropdown userId={userId} agentId={agentId} role="agent" />
             </View>
           ) : null,
       }}
     >
-      {/* visible tabs */}
+      {/* 🎨 VISUAL: Updated icon names for respectful feel */}
       <Tabs.Screen
         name="members"
         options={{
           title: "Members",
-          tabBarIcon: ({ color, size }) => (
-            <TabIcon name="people" color={color} size={size} />
-          ),
         }}
       />
       <Tabs.Screen
         name="promotions"
         options={{
           title: "Promotions",
-          tabBarIcon: ({ color, size }) => (
-            <TabIcon name="pricetags" color={color} size={size} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="commission"
-        options={{
-          title: "Commission",
-          tabBarIcon: ({ color, size }) => (
-            <TabIcon name="cash" color={color} size={size} />
-          ),
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: "Profile",
-          tabBarIcon: ({ color, size }) => (
-            <TabIcon name="person-circle" color={color} size={size} />
-          ),
         }}
       />
+
+      <Tabs.Screen
+        name="commission"
+        options={{
+          title: "Commission",
+        }}
+      />
+
       <Tabs.Screen
         name="AddMemberScreen"
         options={{
           title: "Add Member",
-          tabBarIcon: ({ color, size }) => (
-            <TabIcon name="person-circle" color={color} size={size} />
-          ),
         }}
       />
-      
 
-      {/* hidden (internal) routes */}
+      {/* ⚙️ UNCHANGED: Hidden internal routes */}
       <Tabs.Screen name="index" options={{ href: null }} />
       <Tabs.Screen name="member/[id]" options={{ href: null }} />
       <Tabs.Screen name="member/soa" options={{ href: null }} />

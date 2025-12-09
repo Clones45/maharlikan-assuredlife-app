@@ -1,13 +1,15 @@
 import { Stack } from "expo-router";
 import { View, Text, Image, StyleSheet } from "react-native";
+import Constants from "expo-constants";
+import { memorialColors, memorialSpacing, memorialFonts, memorialShadows } from "../../constants/memorialTheme";
 
 export default function PublicLayout() {
   return (
     <View style={{ flex: 1 }}>
-      {/* 🔹 Top Banner */}
+      {/* 💎 LUXURIOUS: Premium Top Banner */}
       <View style={styles.banner}>
         <Image
-          source={require("../../assets/logo.png")} // 🖼️ adjust to your actual logo path
+          source={require("../../assets/logo.png")}
           style={styles.logo}
           resizeMode="contain"
         />
@@ -17,8 +19,8 @@ export default function PublicLayout() {
       {/* 🔹 Main Navigation Stack */}
       <Stack
         screenOptions={{
-          headerShown: false, // hide default headers for cleaner design
-          contentStyle: { backgroundColor: "#eef3fb" },
+          headerShown: false,
+          contentStyle: { backgroundColor: memorialColors.primary }, // Luxurious Green
         }}
       />
     </View>
@@ -26,22 +28,28 @@ export default function PublicLayout() {
 }
 
 const styles = StyleSheet.create({
+  // 💎 LUXURIOUS: Premium Gradient Banner
   banner: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#0b4aa2",
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    backgroundColor: memorialColors.white, // White banner
+    paddingTop: Constants.statusBarHeight + memorialSpacing.sm, // Add status bar padding
+    paddingBottom: memorialSpacing.md,
+    paddingHorizontal: memorialSpacing.lg,
+    borderBottomWidth: 2,
+    borderBottomColor: memorialColors.gold, // Gold accent line
+    ...memorialShadows.md,
   },
   logo: {
-    width: 40,
-    height: 40,
-    marginRight: 10,
+    width: 36,
+    height: 36,
+    marginRight: memorialSpacing.sm,
   },
   title: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "700",
+    color: memorialColors.primary, // Green text
+    fontSize: memorialFonts.lg,
+    fontWeight: memorialFonts.bold,
+    letterSpacing: memorialFonts.letterSpacing.wide,
   },
 });

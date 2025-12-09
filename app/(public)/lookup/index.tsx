@@ -51,7 +51,7 @@ export default function PublicLookup() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.select({ ios: "padding", android: undefined })}
-      style={{ flex: 1, backgroundColor: "#eef3fb" }}
+      style={{ flex: 1, backgroundColor: memorialColors.primary }}
     >
       <ScrollView ref={scrollRef} contentContainerStyle={{ flexGrow: 1 }}>
         <View style={s.card}>
@@ -61,6 +61,7 @@ export default function PublicLookup() {
             ref={mafRef}
             style={s.input}
             placeholder="AF No."
+            placeholderTextColor={memorialColors.textMuted}
             value={maf}
             onChangeText={setMaf}
             autoCapitalize="characters"
@@ -70,6 +71,7 @@ export default function PublicLookup() {
           <TextInput
             style={s.input}
             placeholder="Last name"
+            placeholderTextColor={memorialColors.textMuted}
             value={last}
             onChangeText={setLast}
             autoCapitalize="characters"
@@ -108,39 +110,88 @@ export default function PublicLookup() {
   );
 }
 
+/* ==================== STYLES ==================== */
+import { memorialColors, memorialSpacing, memorialBorderRadius, memorialFonts, memorialShadows } from "../../../constants/memorialTheme";
+
 const s = StyleSheet.create({
+  // 💎 LUXURIOUS: Page Background
+  page: {
+    flex: 1,
+    backgroundColor: memorialColors.primary, // Luxurious Green
+  },
+
+  // 💎 LUXURIOUS: Premium Card
   card: {
-    margin: 12,
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
+    margin: memorialSpacing.lg,
+    marginTop: memorialSpacing.xxl,
+    backgroundColor: memorialColors.white,
+    borderRadius: memorialBorderRadius.xl,
+    padding: memorialSpacing.xl,
+    borderWidth: 2,
+    borderColor: memorialColors.gold,
+    ...memorialShadows.xl,
   },
-  cardTitle: { fontWeight: "800", color: "#0d3b7a", marginBottom: 10 },
+
+  cardTitle: {
+    fontWeight: memorialFonts.bold,
+    fontSize: memorialFonts.xl,
+    color: memorialColors.primary,
+    marginBottom: memorialSpacing.lg,
+    textAlign: "center",
+    letterSpacing: memorialFonts.letterSpacing.wide,
+  },
+
+  // 💎 LUXURIOUS: Inputs
   input: {
-    backgroundColor: "#fff",
+    backgroundColor: memorialColors.pearl,
     borderWidth: 1,
-    borderColor: "#cbd5e1",
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 10,
+    borderColor: memorialColors.silver,
+    borderRadius: memorialBorderRadius.md,
+    padding: memorialSpacing.lg,
+    marginBottom: memorialSpacing.md,
+    fontSize: memorialFonts.md,
+    color: memorialColors.black,
   },
+
+  // 💎 LUXURIOUS: Primary Button
   primaryBtn: {
-    backgroundColor: "#0b4aa2",
-    paddingVertical: 12,
-    borderRadius: 10,
+    backgroundColor: memorialColors.primary,
+    paddingVertical: memorialSpacing.lg,
+    borderRadius: memorialBorderRadius.md,
     alignItems: "center",
+    marginTop: memorialSpacing.sm,
+    ...memorialShadows.md,
+    borderWidth: 1,
+    borderColor: memorialColors.primaryLight,
   },
-  primaryBtnText: { color: "#fff", fontWeight: "800" },
+  primaryBtnText: {
+    color: memorialColors.white,
+    fontWeight: memorialFonts.bold,
+    fontSize: memorialFonts.md,
+    letterSpacing: memorialFonts.letterSpacing.wide,
+  },
+
+  // 💎 LUXURIOUS: Secondary/Back Button
   backBtn: {
     borderWidth: 1,
-    borderColor: "#0b4aa2",
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 10,
+    borderColor: memorialColors.primary,
+    paddingVertical: memorialSpacing.md,
+    paddingHorizontal: memorialSpacing.xl,
+    borderRadius: memorialBorderRadius.md,
     backgroundColor: "transparent",
   },
-  backBtnText: { color: "#0b4aa2", fontWeight: "800" },
-  hint: { color: "#64748b", marginTop: 10 },
+  backBtnText: {
+    color: memorialColors.primary,
+    fontWeight: memorialFonts.semibold,
+    fontSize: memorialFonts.md,
+  },
+
+  hint: {
+    color: memorialColors.textMuted,
+    marginTop: memorialSpacing.lg,
+    fontSize: memorialFonts.sm,
+    fontStyle: "italic",
+    textAlign: "center",
+    lineHeight: 20,
+  },
 });

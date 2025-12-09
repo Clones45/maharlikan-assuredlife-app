@@ -28,11 +28,11 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
 let SS: any = null;
 try {
   SS = require("expo-secure-store");
-} catch {}
+} catch { }
 let AS: any = null;
 try {
   AS = require("@react-native-async-storage/async-storage").default;
-} catch {}
+} catch { }
 
 async function saveItem(key: string, val: string) {
   if (SS?.setItemAsync) return SS.setItemAsync(key, val);
@@ -59,8 +59,10 @@ async function deleteItem(key: string) {
    ============================================================ */
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
-    persistSession: true,
+    storage: AS || (isWeb ? window.localStorage : undefined),
     autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: false,
   },
 });
 
@@ -110,7 +112,7 @@ export async function signOutUsername() {
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(USER_KEY);
         sessionStorage?.clear?.();
-      } catch {}
+      } catch { }
     }
   } catch (e) {
     console.warn("[logout]", e);

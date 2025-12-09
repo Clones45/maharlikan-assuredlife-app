@@ -1,9 +1,14 @@
 import React from "react";
 import { View, Text, ScrollView, StyleSheet } from "react-native";
 
+import { memorialSpacing } from "../constants/memorialTheme";
+
 export default function BenefitsTab() {
   return (
-    <ScrollView style={{ flex: 1, padding: 16, backgroundColor: "#F9FAFB" }}>
+    <ScrollView
+      style={{ flex: 1, padding: 16, backgroundColor: "#F9FAFB" }}
+      contentContainerStyle={{ paddingBottom: memorialSpacing.tabBarHeight }}
+    >
 
       {/* RANK SYSTEM */}
       <Text style={styles.title}>📊 Rank System</Text>

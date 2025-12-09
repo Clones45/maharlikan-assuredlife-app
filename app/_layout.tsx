@@ -19,6 +19,7 @@ import {
   ensureAuthConsistency,
   currentUser,
 } from "../lib/supabase";
+import { ToastProvider } from "../components/ToastProvider";
 
 const PUBLIC_PREFIXES = ["/lookup", "/promotions"];
 const ADMIN_HOME = "/(admin)";
@@ -72,12 +73,12 @@ async function fetchRoleSmart(): Promise<"admin" | "agent" | "member" | null> {
     const { data } = await supabase.auth.getUser();
     const metaRole = data?.user?.user_metadata?.role;
     if (metaRole) return metaRole as any;
-  } catch {}
+  } catch { }
 
   try {
     const cu = await currentUser();
     if (cu?.role) return cu.role as any;
-  } catch {}
+  } catch { }
 
   const readTable = async (table: string) => {
     try {
@@ -93,7 +94,7 @@ async function fetchRoleSmart(): Promise<"admin" | "agent" | "member" | null> {
 
       const r = data?.role ? String(data.role).toLowerCase() : null;
       if (r && ["admin", "agent", "member"].includes(r)) return r as any;
-    } catch {}
+    } catch { }
 
     return null;
   };
@@ -124,8 +125,17 @@ function AuthGate() {
     const decide = async () => {
       await ensureAuthConsistency(false);
 
-      const { data } = await supabase.auth.getSession();
+      const { data, error } = await supabase.auth.getSession();
+      if (error) {
+        console.warn("[Auth] Session check error:", error.message);
+      }
+
       const hasSession = !!data?.session;
+      if (hasSession) {
+        console.log("[Auth] Session active for:", data.session?.user?.email ?? "unknown");
+      } else {
+        console.log("[Auth] No active session found.");
+      }
 
       if (!alive) return;
 
@@ -169,7 +179,7 @@ function AuthGate() {
       alive = false;
       try {
         sub.subscription.unsubscribe();
-      } catch {}
+      } catch { }
       subscription.remove();
     };
   }, [pathname]);
@@ -221,8 +231,10 @@ export default function RootLayout() {
 
   return (
     <QueryClientProvider client={qcRef.current}>
-      <AuthGate />
-      <Stack screenOptions={{ headerShown: false }} />
+      <ToastProvider>
+        <AuthGate />
+        <Stack screenOptions={{ headerShown: false }} />
+      </ToastProvider>
     </QueryClientProvider>
   );
 }
