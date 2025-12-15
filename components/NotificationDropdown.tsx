@@ -85,8 +85,10 @@ export default function NotificationDropdown({
     fetchNotifications();
 
     // REAL-TIME SYNC
+    // Use a unique channel ID per instance to ensure all tabs receive events independently
+    const channelId = `notif-sync-${Math.random().toString(36).substring(7)}`;
     const channel = supabase
-      .channel("notif-dropdown-sync")
+      .channel(channelId)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "notifications" },

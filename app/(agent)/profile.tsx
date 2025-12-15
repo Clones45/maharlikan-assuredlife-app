@@ -334,7 +334,7 @@ export default function AgentProfile() {
 
         <View style={styles.summaryGrid}>
           <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Lifetime Accumulated Commission</Text>
+            <Text style={styles.summaryLabel}>Total Accumulated Commission</Text>
             <Text style={styles.summaryValue}>{peso(lifetimeCommission)}</Text>
             <Text style={styles.summarySubtext}>Non-withdrawable</Text>
           </View>
@@ -342,7 +342,7 @@ export default function AgentProfile() {
           <View style={styles.summaryDividerVertical} />
 
           <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Withdrawable</Text>
+            <Text style={styles.summaryLabel}>Withdrawable Balance</Text>
             <Text style={styles.summaryValueGold}>{peso(withdrawable)}</Text>
             <Text style={styles.summarySubtext}>Available now</Text>
           </View>
@@ -669,23 +669,27 @@ const styles = StyleSheet.create({
     marginBottom: memorialSpacing.sm,
     textTransform: "uppercase",
     letterSpacing: memorialFonts.letterSpacing.wide,
+    textAlign: "center",
   },
   summaryValue: {
     fontSize: memorialFonts.xl,
     fontWeight: memorialFonts.bold,
     color: memorialColors.black,
     marginBottom: memorialSpacing.xs,
+    textAlign: "center",
   },
   summaryValueGold: {
     fontSize: memorialFonts.xl,
     fontWeight: memorialFonts.bold,
     color: memorialColors.gold,
     marginBottom: memorialSpacing.xs,
+    textAlign: "center",
   },
   summarySubtext: {
     fontSize: memorialFonts.xs,
     color: memorialColors.textMuted,
     fontStyle: "italic",
+    textAlign: "center",
   },
 
   // 💎 LUXURIOUS: Input fields

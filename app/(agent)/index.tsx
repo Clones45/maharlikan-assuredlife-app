@@ -7,6 +7,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from "rea
 import BackgroundLogo from "../../components/BackgroundLogo";
 import { hardLogout } from "../../lib/logout";
 import { memorialColors, memorialSpacing, memorialBorderRadius, memorialFonts, memorialShadows } from "../../constants/memorialTheme";
+import { s } from "../../utils/responsive";
 
 export default function AgentHome() {
   const [loggingOut, setLoggingOut] = useState(false);
@@ -67,16 +68,16 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: memorialSpacing.xxl,
+    padding: s(memorialSpacing.xxl),
   },
 
   // 🎨 VISUAL: Elegant welcome card with soft shadows
   welcomeCard: {
     backgroundColor: memorialColors.bgCard,
     borderRadius: memorialBorderRadius.lg,
-    padding: memorialSpacing.xxxl,
+    padding: s(memorialSpacing.xxxl),
     width: "100%",
-    maxWidth: 400,
+    maxWidth: s(400),
     alignItems: "center",
     ...memorialShadows.lg,
     borderWidth: 1,
@@ -85,30 +86,30 @@ const styles = StyleSheet.create({
 
   // 🎨 VISUAL: Respectful typography
   greeting: {
-    fontSize: memorialFonts.xxxl,
+    fontSize: s(memorialFonts.xxxl),
     fontWeight: memorialFonts.bold,
     color: memorialColors.primary,
-    marginBottom: memorialSpacing.xs,
+    marginBottom: s(memorialSpacing.xs),
   },
 
   subtitle: {
-    fontSize: memorialFonts.lg,
+    fontSize: s(memorialFonts.lg),
     fontWeight: memorialFonts.medium,
     color: memorialColors.textSecondary,
-    marginBottom: memorialSpacing.lg,
+    marginBottom: s(memorialSpacing.lg),
   },
 
   // 🎨 VISUAL: Soft divider for visual separation
   divider: {
-    width: 60,
+    width: s(60),
     height: 2,
     backgroundColor: memorialColors.goldLight,
     borderRadius: 1,
-    marginVertical: memorialSpacing.lg,
+    marginVertical: s(memorialSpacing.lg),
   },
 
   message: {
-    fontSize: memorialFonts.md,
+    fontSize: s(memorialFonts.md),
     color: memorialColors.textMuted,
     textAlign: "center",
     fontStyle: "italic",
@@ -117,25 +118,25 @@ const styles = StyleSheet.create({
   // 🎨 VISUAL: Gentle logout button with memorial colors
   logoutButton: {
     backgroundColor: memorialColors.primary,
-    paddingVertical: memorialSpacing.md,
-    paddingHorizontal: memorialSpacing.xxxl,
+    paddingVertical: s(memorialSpacing.md),
+    paddingHorizontal: s(memorialSpacing.xxxl),
     borderRadius: memorialBorderRadius.md,
-    marginTop: memorialSpacing.xxxl,
-    minWidth: 140,
+    marginTop: s(memorialSpacing.xxxl),
+    minWidth: s(140),
     alignItems: "center",
     ...memorialShadows.sm,
   },
 
   logoutText: {
     color: memorialColors.softWhite,
-    fontSize: memorialFonts.md,
+    fontSize: s(memorialFonts.md),
     fontWeight: memorialFonts.semibold,
   },
 
   // 🎨 VISUAL: Peaceful footer text
   footerText: {
-    marginTop: memorialSpacing.xxl,
-    fontSize: memorialFonts.sm,
+    marginTop: s(memorialSpacing.xxl),
+    fontSize: s(memorialFonts.sm),
     color: memorialColors.textMuted,
     textAlign: "center",
   },

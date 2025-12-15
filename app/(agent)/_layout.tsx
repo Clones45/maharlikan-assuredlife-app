@@ -8,9 +8,9 @@ import { Tabs, router, usePathname } from "expo-router";
 import { supabase } from "../../lib/supabase";
 import { TabIcon } from "../../components/TabIcon";
 import { memorialColors } from "../../constants/memorialTheme"; // ✨ NEW: Memorial theme
-import NotificationDropdown from "../../components/NotificationDropdown";
 import { GlassTabBar } from "../../components/GlassTabBar";
 import { useToast } from "../../components/ToastProvider";
+import AgentHeader from "../../components/AgentHeader"; // ✨ NEW: Fixed Header
 
 const PROFILE_TABLE = "users_profile";
 
@@ -116,22 +116,10 @@ export default function AgentTabsLayout() {
     <Tabs
       tabBar={(props) => <GlassTabBar {...props} />}
       screenOptions={{
-        // 🎨 VISUAL: Memorial theme colors for header and tabs
-        headerStyle: { backgroundColor: memorialColors.primary },
-        headerTintColor: memorialColors.softWhite,
-        // Default tab bar style prop used by custom tab bar to determine visibility
+        header: () => <AgentHeader userId={userId} agentId={agentId} />,
         tabBarStyle: shouldHideTabs ? { display: "none" } : undefined,
-
-        // ⚙️ UNCHANGED: Notification dropdown logic
-        headerRight: () =>
-          userId ? (
-            <View style={{ marginRight: 12 }}>
-              <NotificationDropdown userId={userId} agentId={agentId} role="agent" />
-            </View>
-          ) : null,
       }}
     >
-      {/* 🎨 VISUAL: Updated icon names for respectful feel */}
       <Tabs.Screen
         name="members"
         options={{

@@ -11,6 +11,7 @@ LogBox.ignoreLogs([
 
 import { Stack, router, usePathname } from "expo-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useEffect, useRef, useState } from "react";
 import * as Updates from "expo-updates";
 
@@ -231,10 +232,12 @@ export default function RootLayout() {
 
   return (
     <QueryClientProvider client={qcRef.current}>
-      <ToastProvider>
-        <AuthGate />
-        <Stack screenOptions={{ headerShown: false }} />
-      </ToastProvider>
+      <SafeAreaProvider>
+        <ToastProvider>
+          <AuthGate />
+          <Stack screenOptions={{ headerShown: false }} />
+        </ToastProvider>
+      </SafeAreaProvider>
     </QueryClientProvider>
   );
 }

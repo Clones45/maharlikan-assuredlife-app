@@ -9,13 +9,11 @@ import {
   StyleSheet,
   ActivityIndicator,
   ScrollView,
-  useWindowDimensions,
   TouchableOpacity,
 } from "react-native";
 import { supabase } from "../../lib/supabase";
 import BackgroundLogo from "../../components/BackgroundLogo";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import Svg, { Path } from "react-native-svg";
 import BenefitsTab from "../../components/BenefitsTab";
 import { memorialColors, memorialSpacing, memorialBorderRadius, memorialFonts, memorialShadows } from "../../constants/memorialTheme";
 import { useFocusEffect } from "expo-router";
@@ -140,73 +138,12 @@ function buildTree(rootAgent: Agent, rows: DownlineRow[]): TreeNode {
   return root;
 }
 
-/* ⚙️ UPDATED: Tree layout calculations with Collapsible Support */
-
-const NODE_WIDTH = 160;
-const NODE_HEIGHT = 70;
-const GAP_X = 30;
-const GAP_Y = 80;
-
-function calculateLayout(root: TreeNode, expandedIds: Set<number>): LayoutNode {
-  const measure = (node: TreeNode): LayoutNode => {
-    const isExpanded = expandedIds.has(node.id);
-
-    // If not expanded or no children, it's a leaf in the layout
-    if (!isExpanded || node.children.length === 0) {
-      return { ...node, x: 0, y: 0, width: NODE_WIDTH, children: [] };
-    }
-
-    const children = node.children.map(measure);
-    const childrenTotalWidth =
-      children.reduce((sum, c) => sum + c.width, 0) +
-      (children.length - 1) * GAP_X;
-
-    return {
-      ...node,
-      x: 0,
-      y: 0,
-      width: Math.max(NODE_WIDTH, childrenTotalWidth),
-      children,
-    };
-  };
-
-  const measuredRoot = measure(root);
-
-  const assign = (node: LayoutNode, x: number, y: number) => {
-    node.x = x + node.width / 2;
-    node.y = y;
-
-    let currentX = x;
-
-    const childrenTotalWidth =
-      node.children.reduce((sum, c) => sum + c.width, 0) +
-      (node.children.length - 1) * GAP_X;
-
-    if (node.width > childrenTotalWidth) {
-      currentX += (node.width - childrenTotalWidth) / 2;
-    }
-
-    node.children.forEach((child) => {
-      assign(child, currentX, y + NODE_HEIGHT + GAP_Y);
-      currentX += child.width + GAP_X;
-    });
-  };
-
-  assign(measuredRoot, 0, 50);
-  return measuredRoot;
-}
-
-/* ===================== COMPONENT ===================== */
-
-const OrgChartTree: React.FC<{ root: TreeNode }> = ({ root }) => {
-  const { width: screenWidth } = useWindowDimensions();
-  const [zoom, setZoom] = useState(1);
-
-  // ⚙️ PERF: Only expand root initially to prevent crash on massive trees
+/* ⚙️ UPDATED: Hierarchy List Component (Vertical List) */
+const HierarchyList: React.FC<{ root: TreeNode }> = ({ root }) => {
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set([root.id]));
 
   const toggleNode = (id: number) => {
-    setExpandedIds(prev => {
+    setExpandedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) {
         next.delete(id);
@@ -217,174 +154,92 @@ const OrgChartTree: React.FC<{ root: TreeNode }> = ({ root }) => {
     });
   };
 
-  const layoutRoot = calculateLayout(root, expandedIds);
+  const renderNode = (node: TreeNode, level: number = 0) => {
+    const isExpanded = expandedIds.has(node.id);
+    const hasChildren = node.children.length > 0;
+    const isRoot = level === 0;
 
-  const nodes: LayoutNode[] = [];
-  const collectNodes = (n: LayoutNode) => {
-    nodes.push(n);
-    n.children.forEach(collectNodes);
+    return (
+      <View key={node.id} style={{ marginBottom: 8 }}>
+        {/* Node Card */}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            marginLeft: level * 20, // Indentation
+            backgroundColor: isRoot ? memorialColors.primary : memorialColors.bgCard,
+            padding: 12,
+            borderRadius: memorialBorderRadius.md,
+            borderWidth: 1,
+            borderColor: isRoot ? memorialColors.primaryDark : memorialColors.border,
+            ...memorialShadows.sm,
+          }}
+        >
+          {/* Collapse/Expand Icon */}
+          {hasChildren ? (
+            <TouchableOpacity
+              onPress={() => toggleNode(node.id)}
+              style={{
+                marginRight: 8,
+                width: 24,
+                height: 24,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 16,
+                  fontWeight: "bold",
+                  color: isRoot ? memorialColors.softWhite : memorialColors.primary,
+                }}
+              >
+                {isExpanded ? "▼" : "▶"}
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={{ width: 32 }} /> // Spacer for alignment
+          )}
+
+          {/* Agent Info */}
+          <View>
+            <Text
+              style={{
+                fontSize: 16,
+                fontWeight: memorialFonts.semibold,
+                color: isRoot ? memorialColors.softWhite : memorialColors.primary,
+              }}
+            >
+              {node.firstname} {node.lastname}
+            </Text>
+            <Text
+              style={{
+                fontSize: 12,
+                color: isRoot ? memorialColors.cream : memorialColors.textMuted,
+              }}
+            >
+              {displayPosition(node.position)}
+            </Text>
+          </View>
+        </View>
+
+        {/* Children (Recursive) */}
+        {isExpanded && hasChildren && (
+          <View style={{ marginTop: 8 }}>
+            {node.children.map((child) => renderNode(child, level + 1))}
+          </View>
+        )}
+      </View>
+    );
   };
-  collectNodes(layoutRoot);
-
-  const baseContentWidth = Math.max(screenWidth, layoutRoot.width);
-  const baseContentHeight = Math.max(
-    500,
-    ...nodes.map((n) => n.y + NODE_HEIGHT + 50)
-  );
-
-  const scaledWidth = baseContentWidth * zoom;
-  const scaledHeight = baseContentHeight * zoom;
 
   return (
-    <View style={{ flex: 1, position: "relative" }}>
-      {/* 💎 LUXURIOUS: Premium zoom controls */}
-      <View
-        style={{
-          position: "absolute",
-          bottom: 20,
-          right: 20,
-          zIndex: 100,
-          flexDirection: "column",
-        }}
-      >
-        <TouchableOpacity
-          onPress={() => setZoom((z) => Math.min(z + 0.1, 2))}
-          style={[styles.zoomBtn, { marginBottom: 10 }]}
-        >
-          <Text style={styles.zoomText}>+</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={() => setZoom((z) => Math.max(z - 0.1, 0.4))}
-          style={styles.zoomBtn}
-        >
-          <Text style={styles.zoomText}>-</Text>
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={true}
-        style={{ flex: 1 }}
-      >
-        <ScrollView
-          showsVerticalScrollIndicator={true}
-          style={{ flex: 1 }}
-          contentContainerStyle={{ paddingBottom: memorialSpacing.tabBarHeight }}
-        >
-          <View
-            style={{
-              width: scaledWidth,
-              height: scaledHeight,
-              minWidth: screenWidth,
-              minHeight: 500,
-            }}
-          >
-            {/* 💎 LUXURIOUS: Premium connection lines */}
-            <Svg
-              width={scaledWidth}
-              height={scaledHeight}
-              style={StyleSheet.absoluteFill}
-            >
-              {nodes.map((node) =>
-                node.children.map((child) => {
-                  const startX = node.x * zoom;
-                  const startY = (node.y + NODE_HEIGHT) * zoom;
-                  const endX = child.x * zoom;
-                  const endY = child.y * zoom;
-                  const midY = (startY + endY) / 2;
-
-                  const d = `M${startX},${startY} 
-                             C${startX},${midY} ${endX},${midY} ${endX},${endY}`;
-
-                  return (
-                    <Path
-                      key={`link-${node.id}-${child.id}`}
-                      d={d}
-                      stroke={memorialColors.accentLight}
-                      strokeWidth={2}
-                      fill="none"
-                    />
-                  );
-                })
-              )}
-            </Svg>
-
-            {/* 💎 LUXURIOUS: Premium org chart nodes */}
-            {nodes.map((node) => {
-              const isRoot = node.id === root.id;
-
-              return (
-                <View
-                  key={node.id}
-                  style={{
-                    position: "absolute",
-                    left: (node.x - NODE_WIDTH / 2) * zoom,
-                    top: node.y * zoom,
-                    width: NODE_WIDTH * zoom,
-                    height: NODE_HEIGHT * zoom,
-                    backgroundColor: isRoot ? memorialColors.primary : memorialColors.bgCard,
-                    borderRadius: memorialBorderRadius.md,
-                    borderWidth: 1,
-                    borderColor: isRoot ? memorialColors.primaryDark : memorialColors.border,
-                    padding: 8 * zoom,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    ...memorialShadows.sm,
-                    zIndex: 10,
-                  }}
-                >
-                  <Text
-                    numberOfLines={1}
-                    style={{
-                      fontSize: 14 * zoom,
-                      fontWeight: memorialFonts.semibold,
-                      color: isRoot ? memorialColors.softWhite : memorialColors.primary,
-                    }}
-                  >
-                    {node.firstname} {node.lastname}
-                  </Text>
-
-                  <Text
-                    numberOfLines={1}
-                    style={{
-                      fontSize: 11 * zoom,
-                      color: isRoot ? memorialColors.cream : memorialColors.textMuted,
-                      marginTop: 2 * zoom,
-                    }}
-                  >
-                    {displayPosition(node.position)}
-                  </Text>
-
-                  {/* Toggle Button */}
-                  {node.hasChildren && (
-                    <TouchableOpacity
-                      onPress={() => toggleNode(node.id)}
-                      style={{
-                        position: 'absolute',
-                        bottom: -12 * zoom,
-                        backgroundColor: memorialColors.accent,
-                        width: 24 * zoom,
-                        height: 24 * zoom,
-                        borderRadius: 12 * zoom,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        borderWidth: 2,
-                        borderColor: memorialColors.bgCard,
-                      }}
-                    >
-                      <Text style={{ color: 'white', fontSize: 16 * zoom, fontWeight: 'bold', lineHeight: 20 * zoom }}>
-                        {expandedIds.has(node.id) ? '-' : '+'}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              );
-            })}
-          </View>
-        </ScrollView>
-      </ScrollView>
-    </View>
+    <ScrollView
+      style={{ flex: 1, padding: memorialSpacing.lg }}
+      contentContainerStyle={{ paddingBottom: memorialSpacing.tabBarHeight }}
+    >
+      {renderNode(root)}
+    </ScrollView>
   );
 };
 
@@ -393,6 +248,15 @@ const OrgChartTree: React.FC<{ root: TreeNode }> = ({ root }) => {
 const RecruiterBonusList: React.FC<{ agentId: number }> = ({ agentId }) => {
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<RecruiterBonusRow[]>([]);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+
+  const changeMonth = (delta: number) => {
+    setSelectedDate((prev) => {
+      const next = new Date(prev);
+      next.setMonth(next.getMonth() + delta);
+      return next;
+    });
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -400,19 +264,20 @@ const RecruiterBonusList: React.FC<{ agentId: number }> = ({ agentId }) => {
         try {
           setLoading(true);
 
-          // Determine current period (default to now)
-          const now = new Date();
-          let currentYear = now.getFullYear();
-          let currentMonth = now.getMonth() + 1;
+          let currentYear = selectedDate.getFullYear();
+          let currentMonth = selectedDate.getMonth() + 1;
 
-          // If before the 7th, we are in the previous month's cutoff period
-          if (now.getDate() < 7) {
-            currentMonth -= 1;
-            if (currentMonth === 0) {
-              currentMonth = 12;
-              currentYear -= 1;
-            }
-          }
+          // If currently viewing "this month" and it's before the 7th,
+          // usually we treat "current period" as previous month.
+          // BUT given the user wants to "backtrack", explicit month selection is better.
+          // let's stick to the strict calendar month selected by the user,
+          // OR maintain the "cutoff" logic based on the selected month.
+          // The helper `cutoffRange(Y, M)` gives 7th of M-1 to 7th of M.
+          // So if selectedDate is "Dec 2025", Y=2025, M=12.
+          // Range: Nov 7, 2025 to Dec 7, 2025? Wait, logic says:
+          // start = 7th of M-1. end = 7th of M.
+          // So for "December", it fetches Nov 7 - Dec 7.
+          // This seems to be the intended "commission month".
 
           const { gte, lt } = cutoffRange(currentYear, currentMonth);
 
@@ -493,35 +358,76 @@ const RecruiterBonusList: React.FC<{ agentId: number }> = ({ agentId }) => {
       };
 
       load();
-    }, [agentId])
+    }, [agentId, selectedDate])
   );
 
-  if (loading) {
-    return <ActivityIndicator size="small" color={memorialColors.primary} style={{ marginTop: 20 }} />;
-  }
-
-  if (rows.length === 0) {
-    return (
-      <View style={{ padding: 20, alignItems: "center" }}>
-        <Text style={{ color: memorialColors.textMuted }}>No recruiter bonuses found for this month.</Text>
-      </View>
-    );
-  }
+  const monthName = selectedDate.toLocaleString('default', { month: 'long', year: 'numeric' });
 
   return (
     <ScrollView
       style={{ flex: 1, padding: memorialSpacing.lg }}
       contentContainerStyle={{ paddingBottom: memorialSpacing.tabBarHeight }}
     >
+      {/* Date Selector */}
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: memorialSpacing.md,
+          backgroundColor: memorialColors.bgCard,
+          padding: 8,
+          borderRadius: 999,
+          borderWidth: 1,
+          borderColor: memorialColors.border,
+          ...memorialShadows.sm,
+        }}
+      >
+        <TouchableOpacity
+          onPress={() => changeMonth(-1)}
+          style={{
+            padding: 8,
+            width: 40,
+            alignItems: "center",
+          }}
+        >
+          <Text style={{ fontSize: 18, color: memorialColors.primary }}>◀</Text>
+        </TouchableOpacity>
+
+        <Text style={{ fontSize: memorialFonts.md, fontWeight: memorialFonts.semibold, color: memorialColors.primary }}>
+          {monthName}
+        </Text>
+
+        <TouchableOpacity
+          onPress={() => changeMonth(1)}
+          style={{
+            padding: 8,
+            width: 40,
+            alignItems: "center",
+          }}
+        >
+          <Text style={{ fontSize: 18, color: memorialColors.primary }}>▶</Text>
+        </TouchableOpacity>
+      </View>
+
       <Text style={{
         fontSize: memorialFonts.sm,
         color: memorialColors.textMuted,
         marginBottom: memorialSpacing.md,
         textAlign: "center"
       }}>
-        Recruiter Bonus Breakdown (This Month)
+        Recruiter Bonus Breakdown
       </Text>
-      {rows.map((row) => (
+
+      {loading && <ActivityIndicator size="small" color={memorialColors.primary} />}
+
+      {!loading && rows.length === 0 && (
+        <View style={{ padding: 20, alignItems: "center" }}>
+          <Text style={{ color: memorialColors.textMuted }}>No recruiter bonuses found for this month.</Text>
+        </View>
+      )}
+
+      {!loading && rows.map((row) => (
         <View key={row.subordinate_id} style={styles.bonusCard}>
           <View style={{ marginBottom: 8 }}>
             <Text style={styles.bonusName}>{row.firstname} {row.lastname}</Text>
@@ -544,8 +450,9 @@ const RecruiterBonusList: React.FC<{ agentId: number }> = ({ agentId }) => {
             </Text>
           </View>
         </View>
-      ))}
-      <View style={{ height: 40 }} />
+      ))
+      }
+      < View style={{ height: 40 }} />
     </ScrollView>
   );
 };
@@ -776,7 +683,7 @@ export default function Promotions() {
         {/* Tab content */}
         <View style={{ flex: 1, backgroundColor: memorialColors.bgPrimary }}>
           {activeTab === "tree" ? (
-            <OrgChartTree root={treeRoot} />
+            <HierarchyList root={treeRoot} />
           ) : activeTab === "benefits" ? (
             <BenefitsTab />
           ) : (

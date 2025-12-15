@@ -11,13 +11,14 @@ import {
   ScrollView,
   TextInput,
 } from "react-native";
-import { Picker } from "@react-native-picker/picker";
+// import { Picker } from "@react-native-picker/picker"; 
 import { supabase } from "../../lib/supabase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Progress from "react-native-progress";
 import BackgroundLogo from "../../components/BackgroundLogo";
 import { memorialColors, memorialSpacing, memorialBorderRadius, memorialFonts, memorialShadows } from "../../constants/memorialTheme";
 import { useToast } from "../../components/ToastProvider";
+import { s } from "../../utils/responsive";
 
 // ========================================
 // 🔵 TYPE DEFINITIONS
@@ -37,10 +38,7 @@ interface CommissionRollup {
   corrected_total?: number;
 }
 
-interface LatestPeriod {
-  month: number;
-  year: number;
-}
+
 
 interface CollectionRow {
   id: number;
@@ -57,9 +55,7 @@ interface CollectionRow {
 
 // ========================================
 
-const { width } = Dimensions.get("window");
-const scale = width < 420 ? width / 390 : 1;
-const s = (n: number): number => Math.round(n * scale);
+
 
 const peso = (n: number): string =>
   `₱${(Number(n) || 0).toLocaleString("en-PH", {
@@ -114,7 +110,12 @@ export default function AgentCommissions() {
   const [activeCount, setActiveCount] = useState<number>(0);
   const [canWithdraw, setCanWithdraw] = useState<boolean>(false);
   const [lifetimeTotal, setLifetimeTotal] = useState<number>(0);
-  const [latestPeriod, setLatestPeriod] = useState<LatestPeriod | null>(null);
+  const [isAGRCompliant, setIsAGRCompliant] = useState<boolean>(false);
+  const [hasPendingRequest, setHasPendingRequest] = useState<boolean>(false); // New Rule: 1 pending request at a time
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false); // New Rule: prevents double click
+  const [withdrawalMethod, setWithdrawalMethod] = useState<"Gcash" | "Bank Transfer" | "In Person">("Gcash"); // NEW: Method Selection
+  const [gcashNumber, setGcashNumber] = useState<string | null>(null); // NEW: Agent Gcash Number
+
   const [walletBalance, setWalletBalance] = useState<number>(0);
   const [collections, setCollections] = useState<CollectionRow[]>([]);
   const [showCollections, setShowCollections] = useState<boolean>(true);
@@ -126,27 +127,9 @@ export default function AgentCommissions() {
   // ========================================
   useEffect(() => {
     (async () => {
-      const { data: latest } = await supabase
-        .from("agent_commission_rollups")
-        .select("period_month, period_year")
-        .order("period_year", { ascending: false })
-        .order("period_month", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
       const now = new Date();
-
-      if (latest) {
-        setMonth(latest.period_month);
-        setYear(latest.period_year);
-        setLatestPeriod({
-          month: latest.period_month,
-          year: latest.period_year,
-        });
-      } else {
-        setMonth(now.getMonth() + 1);
-        setYear(now.getFullYear());
-      }
+      setMonth(now.getMonth() + 1);
+      setYear(now.getFullYear());
 
       // Robust Agent ID Retrieval
       const { data: sessionData } = await supabase.auth.getUser();
@@ -174,6 +157,19 @@ export default function AgentCommissions() {
 
       console.log("Initialized Commission Page. Agent ID:", finalAgentId);
       setAgentId(finalAgentId);
+
+      // 3. Fetch Agent Details (Gcash)
+      if (finalAgentId) {
+        const { data: agentData } = await supabase
+          .from("agents")
+          .select("gcash_number")
+          .eq("id", finalAgentId)
+          .maybeSingle();
+
+        if (agentData?.gcash_number) {
+          setGcashNumber(agentData.gcash_number);
+        }
+      }
 
       setIsInitializing(false);
     })();
@@ -369,7 +365,7 @@ export default function AgentCommissions() {
 
       // ---------- FINAL ELIGIBILITY ----------
       const eligibleNextMonth = ruleA || ruleB;
-      setCanWithdraw(eligibleNextMonth);
+      setIsAGRCompliant(eligibleNextMonth);
 
       console.log("Eligibility:", { ruleA, ruleB, eligibleNextMonth });
 
@@ -457,6 +453,16 @@ export default function AgentCommissions() {
         setWalletBalance(bal);
         setLifetimeTotal(life);
 
+        // NEW: Check for pending requests
+        const { data: pendingReq } = await supabase
+          .from("withdrawal_requests")
+          .select("id")
+          .eq("agent_id", agentId)
+          .eq("status", "pending")
+          .maybeSingle();
+
+        setHasPendingRequest(!!pendingReq);
+
         setCanWithdraw(bal >= 500); // rule: at least ₱500 to withdraw
       }
     } catch (err) {
@@ -487,6 +493,19 @@ export default function AgentCommissions() {
           await fetchCommissions();
         }
       )
+      // NEW: Listen to withdrawal_requests too (to unlock button if approved/rejected)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "withdrawal_requests",
+          filter: `agent_id=eq.${agentId}`
+        },
+        async () => {
+          await fetchCommissions();
+        }
+      )
       .subscribe();
 
     return () => {
@@ -508,6 +527,11 @@ export default function AgentCommissions() {
   // ========================================
   async function handleWithdraw(mode: "all" | "custom") {
     if (!agentId) return;
+    if (isSubmitting) return; // Prevent double click
+    if (hasPendingRequest) {
+      Alert.alert("Pending Request", "You already have a pending withdrawal request. Please wait for admin approval.");
+      return;
+    }
 
     const currentBal = walletBalance;
 
@@ -547,31 +571,61 @@ export default function AgentCommissions() {
       }
     }
 
+    // Calculate Deductions
+    const tax = amount * 0.10;
+    const fee = 50;
+    const net = amount - tax - fee;
+
+    if (net < 0) {
+      Alert.alert(
+        "Amount Too Low",
+        `The requested amount ${peso(amount)} is not enough to cover the Processing Fee (${peso(fee)}) and Tax (${peso(tax)}).`
+      );
+      return;
+    }
+
     Alert.alert(
       "Confirm Withdrawal",
-      `Withdraw ${peso(amount)} from your Withdrawable Balance?`,
+      `Gross Amount: ${peso(amount)}\n\nLess Deductions:\n- Processing Fee: ${peso(fee)}\n- Tax (10%): ${peso(tax)}\n\nNet Receivable: ${peso(net)}\n\nProceed?`,
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Confirm",
           style: "destructive",
           onPress: async () => {
-            const { error } = await supabase.rpc("withdraw_commission", {
-              p_agent_id: agentId,
-              p_amount: amount,
-            });
+            setIsSubmitting(true); // LOCK UI
+            try {
+              // Construct Notes
+              let notes = "";
+              if (withdrawalMethod === "Gcash") {
+                notes = `Gcash: ${gcashNumber || "N/A"}`;
+              } else if (withdrawalMethod === "In Person") {
+                notes = "In person or pickup in office";
+              }
 
-            if (error) {
-              console.error(error);
-              Alert.alert(
-                "Error",
-                "Failed to process withdrawal. Please try again."
-              );
-            } else {
-              setCustomAmount("");
-              await fetchCommissions();
+              const { error } = await supabase.rpc("withdraw_commission", {
+                p_agent_id: agentId,
+                p_amount: amount,
+                p_method: withdrawalMethod,
+                p_notes: notes, // Pass notes
+              });
 
-              showToast('success', 'Request Sent', `Withdrawal of ${peso(amount)} is now pending.`);
+              if (error) {
+                console.error(error);
+                Alert.alert(
+                  "Error",
+                  error.message || "Failed to process withdrawal. Please try again."
+                );
+              } else {
+                setCustomAmount("");
+                await fetchCommissions(); // This will refresh pending request status too
+
+                showToast('success', 'Request Sent', `Withdrawal of ${peso(amount)} is now pending.`);
+              }
+            } catch (e) {
+              Alert.alert("Error", "An unexpected error occurred.");
+            } finally {
+              setIsSubmitting(false); // UNLOCK UI
             }
           },
         },
@@ -594,6 +648,27 @@ export default function AgentCommissions() {
   const r = data[0];
   const correctedTotal = r?.corrected_total ?? 0;
 
+  // ========================================
+  // 🔵 HELPER: Change Month
+  // ========================================
+  const changeMonth = (delta: number) => {
+    let nextMonth = month + delta;
+    let nextYear = year;
+
+    if (nextMonth > 12) {
+      nextMonth = 1;
+      nextYear++;
+    } else if (nextMonth < 1) {
+      nextMonth = 12;
+      nextYear--;
+    }
+
+    setMonth(nextMonth);
+    setYear(nextYear);
+  };
+
+  const monthName = new Date(year, month - 1).toLocaleString('default', { month: 'long', year: 'numeric' });
+
   return (
     <BackgroundLogo>
       <ScrollView
@@ -612,29 +687,47 @@ export default function AgentCommissions() {
             </TouchableOpacity>
           </View>
 
-          {/* PICKERS */}
-          <View style={styles.filterWrapper}>
-            <View style={styles.pickerBox}>
-              <Picker
-                selectedValue={month}
-                onValueChange={(v) => setMonth(Number(v))}
-              >
-                {MONTHS.map((m) => (
-                  <Picker.Item key={m.value} label={m.name} value={m.value} />
-                ))}
-              </Picker>
-            </View>
+          {/* DATE SELECTOR (Uniform with Recruiter Bonus) */}
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: memorialSpacing.md,
+              backgroundColor: memorialColors.bgCard,
+              padding: 8,
+              borderRadius: 999,
+              borderWidth: 1,
+              borderColor: memorialColors.border,
+              ...memorialShadows.sm,
+              width: '100%'
+            }}
+          >
+            <TouchableOpacity
+              onPress={() => changeMonth(-1)}
+              style={{
+                padding: 8,
+                width: 40,
+                alignItems: "center",
+              }}
+            >
+              <Text style={{ fontSize: 18, color: memorialColors.primary }}>◀</Text>
+            </TouchableOpacity>
 
-            <View style={styles.pickerBox}>
-              <Picker
-                selectedValue={year}
-                onValueChange={(v) => setYear(Number(v))}
-              >
-                {[2024, 2025, 2026].map((y) => (
-                  <Picker.Item key={y} label={`${y}`} value={y} />
-                ))}
-              </Picker>
-            </View>
+            <Text style={{ fontSize: memorialFonts.md, fontWeight: memorialFonts.semibold, color: memorialColors.primary }}>
+              {monthName}
+            </Text>
+
+            <TouchableOpacity
+              onPress={() => changeMonth(1)}
+              style={{
+                padding: 8,
+                width: 40,
+                alignItems: "center",
+              }}
+            >
+              <Text style={{ fontSize: 18, color: memorialColors.primary }}>▶</Text>
+            </TouchableOpacity>
           </View>
 
           {/* 🎨 ENHANCED: Professional AGR Requirements Card */}
@@ -648,14 +741,14 @@ export default function AgentCommissions() {
             <View style={styles.requirementItem}>
               <Text style={styles.requirementBullet}>•</Text>
               <Text style={styles.requirementText}>
-                Have 3 card members OR 1 new member who pays Membership Fee + first MLAP payment
+                Have 3 Membership (MS) OR 1 New Sales (NS) who will be available within a month upon membership.
               </Text>
             </View>
 
             <View style={styles.infoBox}>
               <Text style={styles.infoIcon}>✓</Text>
               <Text style={styles.infoText}>
-                Complete AGR Requirements to automatically access your withdrawable commission
+                Complete AGR Requirements to automatically access your withdrawable commission for the following Month.
               </Text>
             </View>
 
@@ -677,18 +770,13 @@ export default function AgentCommissions() {
               <View style={styles.cardDivider} />
 
               <View style={styles.commissionRow}>
-                <Text style={styles.commissionLabel}>Monthly Commission</Text>
-                <Text style={styles.commissionValue}>{peso(r.monthly_commission)}</Text>
-              </View>
-
-              <View style={styles.commissionRow}>
-                <Text style={styles.commissionLabel}>Travelling Allowance</Text>
-                <Text style={styles.commissionValue}>{peso((r as any).travel_allowance || 0)}</Text>
-              </View>
-
-              <View style={styles.commissionRow}>
                 <Text style={styles.commissionLabel}>Outright Commission</Text>
                 <Text style={styles.commissionValue}>{peso(r.membership_commission)}</Text>
+              </View>
+
+              <View style={styles.commissionRow}>
+                <Text style={styles.commissionLabel}>Monthly Commission</Text>
+                <Text style={styles.commissionValue}>{peso(r.monthly_commission)}</Text>
               </View>
 
               <View style={styles.commissionRow}>
@@ -697,7 +785,12 @@ export default function AgentCommissions() {
               </View>
 
               <View style={styles.commissionRow}>
-                <Text style={styles.commissionLabel}>Recruiter Bonus</Text>
+                <Text style={styles.commissionLabel}>Travelling Allowance</Text>
+                <Text style={styles.commissionValue}>{peso((r as any).travel_allowance || 0)}</Text>
+              </View>
+
+              <View style={styles.commissionRow}>
+                <Text style={styles.commissionLabel}>Recruiter Lifetime Commission</Text>
                 <Text style={styles.commissionValue}>{peso(r.recruiter_bonus)}</Text>
               </View>
 
@@ -837,52 +930,213 @@ export default function AgentCommissions() {
             </Text>
 
             <Text style={{ fontWeight: "700", marginTop: 10 }}>
-              Lifetime Accumulated Commission (Not Withdrawable): {peso(lifetimeTotal)}
+              Total Accumulated Commission (Not Withdrawable): {peso(lifetimeTotal)}
             </Text>
 
-            <Text style={{ fontWeight: "700", marginTop: 6 }}>
-              Withdrawable Balance: {peso(walletBalance)}
-            </Text>
+
+
+            {hasPendingRequest && (
+              <Text style={{ color: "orange", fontStyle: 'italic', marginTop: 4 }}>
+                ⚠ You have a pending withdrawal request.
+              </Text>
+            )}
+
+            {/* WITHDRAWAL METHOD SELECTION */}
+            <View style={{ marginTop: 20, marginBottom: 10 }}>
+              <Text style={{ fontWeight: memorialFonts.bold, color: memorialColors.primary, marginBottom: 8 }}>
+                Select Withdrawal Method:
+              </Text>
+
+              {/* Option 1: Gcash */}
+              <TouchableOpacity
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  marginBottom: 8,
+                  opacity: 1
+                }}
+                onPress={() => setWithdrawalMethod("Gcash")}
+                disabled={hasPendingRequest || isSubmitting}
+              >
+                <View style={{
+                  height: 20,
+                  width: 20,
+                  borderRadius: 10,
+                  borderWidth: 2,
+                  borderColor: withdrawalMethod === "Gcash" ? memorialColors.primary : memorialColors.textMuted,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginRight: 10
+                }}>
+                  {withdrawalMethod === "Gcash" && (
+                    <View style={{
+                      height: 10,
+                      width: 10,
+                      borderRadius: 5,
+                      backgroundColor: memorialColors.primary
+                    }} />
+                  )}
+                </View>
+                <Text style={{ color: memorialColors.textPrimary }}>Gcash</Text>
+              </TouchableOpacity>
+
+              {/* Option 2: Bank Transfer (Disabled) */}
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  marginBottom: 8,
+                  opacity: 0.5
+                }}
+              >
+                <View style={{
+                  height: 20,
+                  width: 20,
+                  borderRadius: 10,
+                  borderWidth: 2,
+                  borderColor: memorialColors.textMuted,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginRight: 10
+                }}>
+                </View>
+                <Text style={{ color: memorialColors.textMuted }}>Bank Transfer (Coming Soon)</Text>
+              </View>
+
+              {/* Option 3: In Person */}
+              <TouchableOpacity
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  marginBottom: 8,
+                  opacity: 1
+                }}
+                onPress={() => setWithdrawalMethod("In Person")}
+                disabled={hasPendingRequest || isSubmitting}
+              >
+                <View style={{
+                  height: 20,
+                  width: 20,
+                  borderRadius: 10,
+                  borderWidth: 2,
+                  borderColor: withdrawalMethod === "In Person" ? memorialColors.primary : memorialColors.textMuted,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginRight: 10
+                }}>
+                  {withdrawalMethod === "In Person" && (
+                    <View style={{
+                      height: 10,
+                      width: 10,
+                      borderRadius: 5,
+                      backgroundColor: memorialColors.primary
+                    }} />
+                  )}
+                </View>
+                <Text style={{ color: memorialColors.textPrimary }}>In person (pick up in office)</Text>
+              </TouchableOpacity>
+
+              <Text style={{ fontWeight: "700", marginTop: 12, marginBottom: 12 }}>
+                Withdrawable Balance: {peso(walletBalance)}
+              </Text>
+            </View>
 
             {/* Withdraw controls like Electron */}
             <View style={styles.withdrawRow}>
               <TouchableOpacity
                 style={[
                   styles.withdrawBtnSmall,
-                  { backgroundColor: canWithdraw ? "#16a34a" : "#9ca3af" },
+                  { backgroundColor: (canWithdraw && !hasPendingRequest && !isSubmitting) ? "#16a34a" : "#9ca3af" },
                 ]}
-                disabled={!canWithdraw}
+                disabled={!canWithdraw || hasPendingRequest || isSubmitting}
                 onPress={() => handleWithdraw("all")}
               >
-                <Text style={styles.withdrawSmallTxt}>Withdraw All</Text>
+                <Text style={styles.withdrawSmallTxt}>
+                  {isSubmitting ? "Processing..." : "Withdraw All"}
+                </Text>
               </TouchableOpacity>
 
-              <TextInput
-                style={styles.amountInput}
-                placeholder="Custom amount"
-                placeholderTextColor="#9ca3af"
-                keyboardType="numeric"
-                value={customAmount}
-                onChangeText={setCustomAmount}
-              />
+              <View style={{ flex: 1, marginHorizontal: 6 }}>
+                <Text style={{ fontSize: 10, color: memorialColors.textSecondary, marginBottom: 2, marginLeft: 2 }}>Amount</Text>
+                <TextInput
+                  style={[styles.amountInput, (hasPendingRequest || isSubmitting) && { backgroundColor: '#e5e5e5', color: '#a3a3a3' }]}
+                  placeholderTextColor="#9ca3af"
+                  keyboardType="numeric"
+                  value={customAmount}
+                  onChangeText={setCustomAmount}
+                  editable={!hasPendingRequest && !isSubmitting}
+                />
+              </View>
 
               <TouchableOpacity
                 style={[
                   styles.withdrawBtnSmall,
-                  { backgroundColor: canWithdraw ? "#0ea5e9" : "#9ca3af" },
+                  { backgroundColor: (canWithdraw && !hasPendingRequest && !isSubmitting) ? "#0ea5e9" : "#9ca3af" },
                 ]}
-                disabled={!canWithdraw}
+                disabled={!canWithdraw || hasPendingRequest || isSubmitting}
                 onPress={() => handleWithdraw("custom")}
               >
-                <Text style={styles.withdrawSmallTxt}>Withdraw Custom</Text>
+                <Text style={styles.withdrawSmallTxt}>
+                  {isSubmitting ? "..." : "Withdraw Custom"}
+                </Text>
               </TouchableOpacity>
             </View>
 
-            {!canWithdraw && (
+            {!canWithdraw && !hasPendingRequest && (
               <Text style={styles.motivation}>
                 💡 You can withdraw once your Withdrawable Balance reaches at
                 least ₱500.00.
               </Text>
+            )}
+          </View>
+
+          {/* 💎 INCENTIVES NOTE (New) */}
+          <View style={styles.requirementsCard}>
+            <Text style={styles.summaryTitle}>Incentives Note</Text>
+            <View style={styles.cardDivider} />
+
+            {isAGRCompliant ? (
+              <>
+                <Text style={[styles.collectionEmpty, { marginTop: 0, marginBottom: 10, fontSize: 13, color: memorialColors.success, fontWeight: "bold", fontStyle: "normal" }]}>
+                  Congratulations! You are now Qualified to your Next Month Qualifications:
+                </Text>
+
+                <View style={styles.requirementItem}>
+                  <Text style={styles.requirementBullet}>•</Text>
+                  <Text style={styles.requirementText}>Outright Commission</Text>
+                </View>
+                <View style={styles.requirementItem}>
+                  <Text style={styles.requirementBullet}>•</Text>
+                  <Text style={styles.requirementText}>Monthly Commission</Text>
+                </View>
+                <View style={styles.requirementItem}>
+                  <Text style={styles.requirementBullet}>•</Text>
+                  <Text style={styles.requirementText}>Overriding Commission</Text>
+                </View>
+                <View style={styles.requirementItem}>
+                  <Text style={styles.requirementBullet}>•</Text>
+                  <Text style={styles.requirementText}>Recruiter's Lifetime Commission</Text>
+                </View>
+                <View style={styles.requirementItem}>
+                  <Text style={styles.requirementBullet}>•</Text>
+                  <Text style={styles.requirementText}>Rice Incentive</Text>
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={[styles.collectionEmpty, { marginTop: 0, marginBottom: 10, fontSize: 13, color: memorialColors.textSecondary, fontWeight: "bold", fontStyle: "normal" }]}>
+                  Your Next Month Qualifications are:
+                </Text>
+
+                <View style={styles.requirementItem}>
+                  <Text style={styles.requirementBullet}>•</Text>
+                  <Text style={styles.requirementText}>Outright Commission</Text>
+                </View>
+                <View style={styles.requirementItem}>
+                  <Text style={styles.requirementBullet}>•</Text>
+                  <Text style={styles.requirementText}>Rice Incentive</Text>
+                </View>
+              </>
             )}
           </View>
         </View>
@@ -1073,7 +1327,7 @@ const styles = StyleSheet.create({
   // 🎨 VISUAL: Memorial-themed withdraw controls
   withdrawRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-end", // Align bottom to keep buttons aligned with input box
     marginTop: s(12),
   },
   withdrawBtnSmall: {
@@ -1084,7 +1338,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     flexShrink: 0,
     ...memorialShadows.sm,
-    marginRight: s(6), // Replaces gap
+    // marginRight: s(6), // Replaces gap (Handled by container View now)
   },
   withdrawSmallTxt: {
     color: memorialColors.softWhite,

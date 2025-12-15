@@ -10,7 +10,7 @@ async function inspectSchema() {
     console.log("--- INSPECTING AGENT WALLETS TABLE ---");
 
     const { data, error } = await supabase
-        .from("agent_wallets")
+        .from("agents")
         .select("*")
         .limit(1);
 

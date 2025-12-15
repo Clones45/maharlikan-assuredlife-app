@@ -80,7 +80,8 @@ export type BasicUser = {
 };
 
 export async function getUserClient(): Promise<SupabaseClient | null> {
-  const token = await getItem(TOKEN_KEY);
+  const { data } = await supabase.auth.getSession();
+  const token = data?.session?.access_token;
   if (!token) return null;
   return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     global: { headers: { Authorization: `Bearer ${token}` } },
@@ -120,16 +121,8 @@ export async function signOutUsername() {
 }
 
 export async function ensureAuthConsistency(strict: boolean = false) {
-  try {
-    const [uToken, { data }] = await Promise.all([
-      getItem(TOKEN_KEY),
-      supabase.auth.getSession(),
-    ]);
-    const hasSB = !!data?.session;
-    if (strict && !uToken && hasSB) await supabase.auth.signOut();
-  } catch (err) {
-    console.warn("[Auth] ensureAuthConsistency error:", err);
-  }
+  // No-op: Supabase handles session consistency now.
+  // We keep this function to avoid breaking imports in _layout.tsx
 }
 
 export async function loginWithUsername(username: string, password: string) {

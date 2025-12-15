@@ -91,6 +91,8 @@ export default function AddMemberScreen() {
   const [birthDate, setBirthDate] = useState(""); // stored as YYYY-MM-DD string
   const [birthDateObj, setBirthDateObj] = useState<Date | null>(null);
   const [showBirthPicker, setShowBirthPicker] = useState(false);
+  // Track which beneficiary is picking a date (for native picker)
+  const [activeBeneDateIndex, setActiveBeneDateIndex] = useState<number | null>(null);
 
   const [age, setAge] = useState("");
 
@@ -184,17 +186,21 @@ export default function AddMemberScreen() {
   // =====================================
   // Helper: compute age from birthdate
   // =====================================
-  const computeAge = (dateStr: string) => {
-    if (!dateStr) return;
+  const calculateAge = (dateStr: string): string => {
+    if (!dateStr) return "";
     const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return;
+    if (isNaN(d.getTime())) return "";
     const now = new Date();
     let years = now.getFullYear() - d.getFullYear();
     const mDiff = now.getMonth() - d.getMonth();
     if (mDiff < 0 || (mDiff === 0 && now.getDate() < d.getDate())) {
       years--;
     }
-    setAge(String(years));
+    return String(years);
+  };
+
+  const computeAge = (dateStr: string) => {
+    setAge(calculateAge(dateStr));
   };
 
   const formatDate = (date: Date) => {
@@ -248,6 +254,40 @@ export default function AddMemberScreen() {
     setBeneficiaries((prev) => {
       const next = [...prev];
       next[index] = { ...next[index], [key]: value };
+      return next;
+    });
+  };
+
+  const handleBeneBirthDateChange = (_event: any, selectedDate?: Date) => {
+    const idx = activeBeneDateIndex;
+    setActiveBeneDateIndex(null); // Close picker
+    if (idx === null || !selectedDate) return;
+
+    const formatted = formatDate(selectedDate);
+    const ageVal = calculateAge(formatted);
+
+    setBeneficiaries((prev) => {
+      const next = [...prev];
+      next[idx] = {
+        ...next[idx],
+        birthDate: formatted,
+        age: ageVal
+      };
+      return next;
+    });
+  };
+
+  const handleWebBeneDateChange = (index: number, e: any) => {
+    const value = e.target.value;
+    const ageVal = calculateAge(value);
+
+    setBeneficiaries((prev) => {
+      const next = [...prev];
+      next[index] = {
+        ...next[index],
+        birthDate: value,
+        age: ageVal
+      };
       return next;
     });
   };
@@ -393,6 +433,7 @@ export default function AddMemberScreen() {
           occupation: occupation.trim() || null,
 
           agent_id: agentId,
+          balance: contractedPrice ?? 0,
           // date_joined, status, membership_paid, etc. use DB defaults
         })
         .select()
@@ -529,24 +570,30 @@ export default function AddMemberScreen() {
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Member Information</Text>
 
+        <Text style={styles.label}>AF No</Text>
         <TextInput
           style={styles.input}
           placeholder="AF No"
           value={mafNo}
           onChangeText={setMafNo}
         />
-        <TextInput
-          style={styles.input}
-          placeholder="First Name"
-          value={firstName}
-          onChangeText={setFirstName}
-        />
+
+        <Text style={styles.label}>Last Name</Text>
         <TextInput
           style={styles.input}
           placeholder="Last Name"
           value={lastName}
           onChangeText={setLastName}
         />
+        <Text style={styles.label}>First Name</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="First Name"
+          value={firstName}
+          onChangeText={setFirstName}
+        />
+
+        <Text style={styles.label}>Middle Name</Text>
         <TextInput
           style={styles.input}
           placeholder="Middle Name (optional)"
@@ -599,6 +646,7 @@ export default function AddMemberScreen() {
           </>
         )}
 
+        <Text style={styles.label}>Age</Text>
         <TextInput
           style={styles.input}
           placeholder="Age"
@@ -607,6 +655,7 @@ export default function AddMemberScreen() {
           onChangeText={setAge}
         />
 
+        <Text style={styles.label}>Address</Text>
         <TextInput
           style={styles.input}
           placeholder="Address"
@@ -615,18 +664,21 @@ export default function AddMemberScreen() {
           onChangeText={setAddress}
         />
 
+        <Text style={styles.label}>Contact Number</Text>
         <TextInput
           style={styles.input}
           placeholder="Contact Number"
           value={contactNumber}
           onChangeText={setContactNumber}
         />
+        <Text style={styles.label}>Phone Number</Text>
         <TextInput
           style={styles.input}
           placeholder="Phone Number"
           value={phoneNumber}
           onChangeText={setPhoneNumber}
         />
+        <Text style={styles.label}>Religion</Text>
         <TextInput
           style={styles.input}
           placeholder="Religion"
@@ -658,36 +710,42 @@ export default function AddMemberScreen() {
           <Picker.Item label="Annulled" value="Annulled" />
         </Picker>
 
+        <Text style={styles.label}>Nationality</Text>
         <TextInput
           style={styles.input}
           placeholder="Nationality"
           value={nationality}
           onChangeText={setNationality}
         />
+        <Text style={styles.label}>Birthplace</Text>
         <TextInput
           style={styles.input}
           placeholder="Birthplace"
           value={birthplace}
           onChangeText={setBirthplace}
         />
+        <Text style={styles.label}>Zipcode</Text>
         <TextInput
           style={styles.input}
           placeholder="Zipcode"
           value={zipcode}
           onChangeText={setZipcode}
         />
+        <Text style={styles.label}>Height</Text>
         <TextInput
           style={styles.input}
           placeholder="Height"
           value={height}
           onChangeText={setHeight}
         />
+        <Text style={styles.label}>Weight</Text>
         <TextInput
           style={styles.input}
           placeholder="Weight"
           value={weight}
           onChangeText={setWeight}
         />
+        <Text style={styles.label}>Occupation</Text>
         <TextInput
           style={styles.input}
           placeholder="Occupation"
@@ -720,18 +778,21 @@ export default function AddMemberScreen() {
           <Picker.Item label="CARD" value="CARD" />
         </Picker>
 
+        <Text style={styles.label}>Casket Type</Text>
         <TextInput
           style={styles.input}
           placeholder="Casket Type"
           value={casketType}
           editable={false}
         />
+        <Text style={styles.label}>Contracted Price</Text>
         <TextInput
           style={styles.input}
           placeholder="Contracted Price"
           value={contractedPrice != null ? String(contractedPrice) : ""}
           editable={false}
         />
+        <Text style={styles.label}>Monthly Due</Text>
         <TextInput
           style={styles.input}
           placeholder="Monthly Due"
@@ -744,47 +805,80 @@ export default function AddMemberScreen() {
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Beneficiaries (Optional)</Text>
         <Text style={styles.helperText}>
-          Beneficiaries can be reused across members. Duplicates are allowed.
+          Beneficiaries can be reused across members.
         </Text>
 
         {beneficiaries.map((b, index) => (
           <View key={index} style={styles.beneBox}>
-            <TextInput
-              style={styles.input}
-              placeholder="First Name"
-              value={b.firstName}
-              onChangeText={(v) => updateBeneficiary(index, "firstName", v)}
-            />
+            <Text style={styles.label}>Last Name</Text>
             <TextInput
               style={styles.input}
               placeholder="Last Name"
               value={b.lastName}
               onChangeText={(v) => updateBeneficiary(index, "lastName", v)}
             />
+            <Text style={styles.label}>First Name</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="First Name"
+              value={b.firstName}
+              onChangeText={(v) => updateBeneficiary(index, "firstName", v)}
+            />
+            <Text style={styles.label}>Middle Name</Text>
             <TextInput
               style={styles.input}
               placeholder="Middle Name (optional)"
               value={b.middleName}
               onChangeText={(v) => updateBeneficiary(index, "middleName", v)}
             />
+            <Text style={styles.label}>Relationship</Text>
             <TextInput
               style={styles.input}
               placeholder="Relationship (e.g. SON, HUSBAND)"
               value={b.relation}
               onChangeText={(v) => updateBeneficiary(index, "relation", v)}
             />
+            <Text style={styles.label}>Address</Text>
             <TextInput
               style={styles.input}
               placeholder="Address (optional)"
               value={b.address}
               onChangeText={(v) => updateBeneficiary(index, "address", v)}
             />
-            <TextInput
-              style={styles.input}
-              placeholder="Birthdate (YYYY-MM-DD, optional)"
-              value={b.birthDate}
-              onChangeText={(v) => updateBeneficiary(index, "birthDate", v)}
-            />
+
+            <Text style={styles.label}>Birthdate</Text>
+            {Platform.OS === "web" ? (
+              <input
+                type="date"
+                value={b.birthDate}
+                onChange={(e) => handleWebBeneDateChange(index, e)}
+                style={{
+                  borderWidth: 1,
+                  borderColor: "#d1d5db",
+                  borderRadius: 8,
+                  padding: 10,
+                  marginBottom: 8,
+                  fontSize: 14,
+                  width: "100%",
+                }}
+              />
+            ) : (
+              <TouchableOpacity
+                onPress={() => setActiveBeneDateIndex(index)}
+                activeOpacity={0.8}
+              >
+                <View pointerEvents="none">
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Select Birthdate (YYYY-MM-DD)"
+                    value={b.birthDate}
+                    editable={false}
+                  />
+                </View>
+              </TouchableOpacity>
+            )}
+
+            <Text style={styles.label}>Age</Text>
             <TextInput
               style={styles.input}
               placeholder="Age (optional)"
@@ -856,6 +950,14 @@ export default function AddMemberScreen() {
           </View>
         </View>
       </Modal>
+      {activeBeneDateIndex !== null && (
+        <DateTimePicker
+          value={new Date(activeBeneDateIndex !== null && beneficiaries[activeBeneDateIndex]?.birthDate ? beneficiaries[activeBeneDateIndex].birthDate : '2000-01-01')}
+          mode="date"
+          display="default"
+          onChange={handleBeneBirthDateChange}
+        />
+      )}
     </ScrollView>
 
 

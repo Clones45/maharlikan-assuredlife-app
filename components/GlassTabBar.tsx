@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform, Dimensions } from 'react-native';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring, withTiming, interpolate, Extrapolate } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { memorialColors, memorialFonts, memorialShadows, memorialBorderRadius } from '../constants/memorialTheme';
 import { TabIcon } from './TabIcon';
 
@@ -11,6 +12,7 @@ const TAB_BAR_HEIGHT = 70;
 const TAB_BAR_MARGIN = 20;
 
 export function GlassTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+    const insets = useSafeAreaInsets();
     // Hide tab bar on specific screens if needed
     const focusedOptions = descriptors[state.routes[state.index].key].options;
     if ((focusedOptions.tabBarStyle as any)?.display === 'none') {
@@ -21,7 +23,7 @@ export function GlassTabBar({ state, descriptors, navigation }: BottomTabBarProp
     const allowedRoutes = ['members', 'promotions', 'profile', 'commission', 'AddMemberScreen'];
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { paddingBottom: (Platform.OS === 'ios' ? 20 : 10) + insets.bottom }]}>
             <View style={styles.glassContainer}>
                 {state.routes
                     .filter(route => allowedRoutes.includes(route.name))
@@ -141,25 +143,23 @@ function TabItem({ isFocused, onPress, onLongPress, options, routeName }: any) {
 
 const styles = StyleSheet.create({
     container: {
-        position: 'absolute',
-        bottom: 0,
+        // position: 'absolute', // Removed to prevent overlay
+        // bottom: 0, // Removed to prevent overlay
         width: '100%',
         alignItems: 'center',
-        paddingBottom: Platform.OS === 'ios' ? 20 : 10,
+        // paddingBottom: Platform.OS === 'ios' ? 20 : 10, // Handled dynamically now
         backgroundColor: 'transparent',
     },
     glassContainer: {
         flexDirection: 'row',
-        width: width - (TAB_BAR_MARGIN * 2),
+        width: '100%',
         height: TAB_BAR_HEIGHT,
-        backgroundColor: 'rgba(6, 53, 40, 0.92)', // Deep emerald with transparency
-        borderRadius: memorialBorderRadius.xxl,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.15)',
-        ...memorialShadows.xl,
+        backgroundColor: memorialColors.primary,
+        borderTopWidth: 2,
+        borderTopColor: memorialColors.gold,
         justifyContent: 'space-around',
         alignItems: 'center',
-        paddingHorizontal: 10,
+        paddingHorizontal: 0,
     },
     tabItem: {
         flex: 1,

@@ -47,6 +47,10 @@ type Member = {
   occupation: AnyStr;
   agent: AnyStr;
   agent_id?: number | null;
+  status?: string;
+  statusColor?: string;
+  created_at?: string;
+  plan_start_date?: string;
 };
 
 type Beneficiary = {
@@ -122,7 +126,71 @@ export default function AgentMemberDetail() {
       .maybeSingle();
 
     if (mErr) console.warn("Member fetch error:", mErr.message);
-    const mem = (m as Member) ?? null;
+
+    // Fetch Collections to Calculate Balance (Source of Truth)
+    const { data: collections, error: cErr } = await supabase
+      .from('collections')
+      .select('payment')
+      .eq('member_id', memberId);
+
+    if (cErr) console.warn("Collections fetch error:", cErr.message);
+
+    const rawPayments = collections || [];
+    const totalPaid = rawPayments.reduce((sum, c) => sum + (Number(c.payment) || 0), 0);
+    const paymentsCount = rawPayments.length;
+
+    // Calculate Status
+    let status = 'Active';
+    let statusColor = '#22c55e'; // Green
+
+    if (m) {
+      // DYNAMIC BALANCE CALCULATION
+      const contracted = Number(m.contracted_price) || 0;
+      const calculatedBalance = Math.max(0, contracted - totalPaid);
+
+      // Override member balance with calculated one
+      m.balance = calculatedBalance;
+
+      if (calculatedBalance <= 0) {
+        status = 'Completed';
+        statusColor = '#22c55e';
+      } else {
+        // Start Date Priority: plan_start_date -> created_at (Fallback)
+        let startDateVal = m.plan_start_date ? new Date(m.plan_start_date).getTime() : null;
+        if (!startDateVal) {
+          startDateVal = new Date(m.created_at || Date.now()).getTime();
+        }
+        const startDate = new Date(startDateVal);
+        const currentDate = new Date();
+
+        // (YearDiff * 12) + MonthDiff
+        let monthsSinceStart = (currentDate.getFullYear() - startDate.getFullYear()) * 12 + (currentDate.getMonth() - startDate.getMonth());
+
+        if (currentDate.getDate() < startDate.getDate()) {
+          monthsSinceStart -= 1;
+        }
+        monthsSinceStart = Math.max(0, monthsSinceStart);
+
+        const monthsPaid = paymentsCount || 0;
+        const monthsBehind = Math.max(0, monthsSinceStart - monthsPaid);
+
+        if (monthsBehind >= 1 && monthsBehind < 2) {
+          status = 'Warning';
+          statusColor = '#eab308';
+        } else if (monthsBehind >= 2 && monthsBehind < 3) {
+          status = 'Lapsable';
+          statusColor = '#f97316';
+        } else if (monthsBehind >= 3) {
+          status = 'Lapsed';
+          statusColor = '#ef4444';
+        } else {
+          status = 'Active';
+          statusColor = '#22c55e';
+        }
+      }
+    }
+
+    const mem = m ? { ...m, status, statusColor } : null;
     setMember(mem);
 
     // ownership check
@@ -229,7 +297,12 @@ export default function AgentMemberDetail() {
             <View style={styles.profileStats}>
               <View style={styles.statItem}>
                 <Text style={styles.statLabel}>Status</Text>
-                <Text style={styles.statValue}>Active</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: member?.statusColor || '#ccc' }} />
+                  <Text style={[styles.statValue, { color: member?.statusColor || memorialColors.textPrimary }]}>
+                    {member?.status || 'Active'}
+                  </Text>
+                </View>
               </View>
               <View style={styles.statDivider} />
               <View style={styles.statItem}>

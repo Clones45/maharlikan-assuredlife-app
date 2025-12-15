@@ -52,10 +52,10 @@ export default function BenefitsTab() {
       <Text style={styles.title}>💰 Outright Commission (OC)</Text>
 
       <View style={styles.box}>
-        <Text style={styles.sub}>• Plan A1 – ₱150</Text>
-        <Text style={styles.sub}>• Plan A2 – ₱150</Text>
-        <Text style={styles.sub}>• Plan B1 – ₱130</Text>
-        <Text style={styles.sub}>• Plan B2 – ₱130</Text>
+        <Text style={styles.sub}>• Package A1 – ₱150</Text>
+        <Text style={styles.sub}>• Package A2 – ₱150</Text>
+        <Text style={styles.sub}>• Package B1 – ₱130</Text>
+        <Text style={styles.sub}>• Package B2 – ₱130</Text>
         <Text style={styles.sub}>• PAI – ₱25</Text>
         <Text style={styles.sub}>• Membership Card – ₱150</Text>
       </View>
@@ -63,10 +63,10 @@ export default function BenefitsTab() {
       <Text style={styles.title}>📅 Monthly Commission (MC)</Text>
 
       <View style={styles.box}>
-        <Text style={styles.sub}>• Plan A1 – ₱120</Text>
-        <Text style={styles.sub}>• Plan A2 – ₱120</Text>
-        <Text style={styles.sub}>• Plan B1 – ₱100</Text>
-        <Text style={styles.sub}>• Plan B2 – ₱100</Text>
+        <Text style={styles.sub}>• Package A1 – ₱120</Text>
+        <Text style={styles.sub}>• Package A2 – ₱120</Text>
+        <Text style={styles.sub}>• Package B1 – ₱100</Text>
+        <Text style={styles.sub}>• Package B2 – ₱100</Text>
         <Text style={styles.sub}>
           • Collection Traveling Allowance (CTA) – ₱30
         </Text>

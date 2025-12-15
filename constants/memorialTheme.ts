@@ -90,7 +90,7 @@ export const memorialSpacing = {
     huge: 40,
     massive: 48,
     // Navigation spacing
-    tabBarHeight: 120,
+    tabBarHeight: 20,
 };
 
 export const memorialBorderRadius = {
