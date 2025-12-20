@@ -770,27 +770,27 @@ export default function AgentCommissions() {
               <View style={styles.cardDivider} />
 
               <View style={styles.commissionRow}>
-                <Text style={styles.commissionLabel}>Outright Commission</Text>
+                <Text style={styles.commissionLabel}>Outright Commission (OC) </Text>
                 <Text style={styles.commissionValue}>{peso(r.membership_commission)}</Text>
               </View>
 
               <View style={styles.commissionRow}>
-                <Text style={styles.commissionLabel}>Monthly Commission</Text>
+                <Text style={styles.commissionLabel}>Monthly Commission (MC) </Text>
                 <Text style={styles.commissionValue}>{peso(r.monthly_commission)}</Text>
               </View>
 
               <View style={styles.commissionRow}>
-                <Text style={styles.commissionLabel}>Override Commission</Text>
+                <Text style={styles.commissionLabel}>Overriding Commission (Overriding)</Text>
                 <Text style={styles.commissionValue}>{peso(r.override_commission)}</Text>
               </View>
 
               <View style={styles.commissionRow}>
-                <Text style={styles.commissionLabel}>Travelling Allowance</Text>
+                <Text style={styles.commissionLabel}>Travelling Allowance (CTA)</Text>
                 <Text style={styles.commissionValue}>{peso((r as any).travel_allowance || 0)}</Text>
               </View>
 
               <View style={styles.commissionRow}>
-                <Text style={styles.commissionLabel}>Recruiter Lifetime Commission</Text>
+                <Text style={styles.commissionLabel}>Recruiter Lifetime Commission (RLC)</Text>
                 <Text style={styles.commissionValue}>{peso(r.recruiter_bonus)}</Text>
               </View>
 

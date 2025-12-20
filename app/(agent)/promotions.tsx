@@ -466,20 +466,33 @@ export default function Promotions() {
   const [activeTab, setActiveTab] = useState<"tree" | "benefits" | "recruiter">("tree");
   const [rulesExpanded, setRulesExpanded] = useState(false); // 💎 NEW: Collapsible rules state
 
+
   // ⚙️ UNCHANGED: Agent ID retrieval logic
   const getAgentId = useCallback(async () => {
     const { data: session } = await supabase.auth.getUser();
     const user_id = session?.user?.id;
-    if (!user_id) return null;
+    if (!user_id) {
+      console.log("Promotions: No user_id found in session");
+      return null;
+    }
+    console.log("Promotions: Current user_id:", user_id);
 
     const cached = await AsyncStorage.getItem("agent_id");
-    if (cached) return Number(cached);
+    console.log("Promotions: Cached agent_id:", cached);
 
+    if (cached) {
+      console.log("Promotions: Using cached agent_id:", cached);
+      return Number(cached);
+    }
+
+    console.log("Promotions: Fetching agent_id from DB...");
     const { data } = await supabase
       .from("users_profile")
       .select("agent_id")
       .eq("user_id", user_id)
       .maybeSingle();
+
+    console.log("Promotions: DB Result:", data);
 
     if (!data?.agent_id) return null;
 

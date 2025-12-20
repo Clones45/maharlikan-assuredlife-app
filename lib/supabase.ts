@@ -103,6 +103,10 @@ export async function signOutUsername() {
     await Promise.all([
       deleteItem(TOKEN_KEY),
       deleteItem(USER_KEY),
+      // Fix: agent_id is stored in AsyncStorage specifically, not SecureStore.
+      // deleteItem() might default to SecureStore if available and skip AsyncStorage.
+      deleteItem("agent_id"),
+      (AS?.removeItem ? AS.removeItem("agent_id") : Promise.resolve()),
       supabase.auth.signOut(),
     ]);
     if (isWeb) {
@@ -112,6 +116,7 @@ export async function signOutUsername() {
           .forEach((k) => localStorage.removeItem(k));
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(USER_KEY);
+        localStorage.removeItem("agent_id");
         sessionStorage?.clear?.();
       } catch { }
     }

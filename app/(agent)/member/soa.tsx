@@ -216,8 +216,8 @@ export default function SOAScreen() {
           // Ensure non-negative
           monthsSinceStart = Math.max(0, monthsSinceStart);
 
-          // Count valid payments
-          const monthsPaid = rawPayments.length;
+          // Count valid payments (Amount / Due)
+          const monthsPaid = monthlyDue > 0 ? (totalPaid / monthlyDue) : rawPayments.length;
           const monthsBehind = Math.max(0, monthsSinceStart - monthsPaid);
 
           if (balance <= 0) {
@@ -496,6 +496,7 @@ export default function SOAScreen() {
                   </Text>
                 </View>
               </View>
+
               {data?.status === 'Lapsed' && (
                 <View style={styles.warningBox}>
                   <Text style={styles.warningText}>⚠ Reinstate this member to be active.</Text>

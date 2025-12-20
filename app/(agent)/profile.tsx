@@ -17,7 +17,7 @@ import {
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { decode } from "base64-arraybuffer";
-import { supabase } from "../../lib/supabase";
+import { supabase, signOutUsername } from "../../lib/supabase";
 import { memorialColors, memorialSpacing, memorialBorderRadius, memorialFonts, memorialShadows } from "../../constants/memorialTheme";
 
 const peso = (n: number): string =>
@@ -499,7 +499,7 @@ export default function AgentProfile() {
       {/* 💎 LUXURIOUS: Sign Out Button */}
       <TouchableOpacity
         style={styles.logoutButton}
-        onPress={async () => await supabase.auth.signOut()}
+        onPress={async () => await signOutUsername()}
       >
         <Text style={styles.logoutText}>Sign Out</Text>
       </TouchableOpacity>

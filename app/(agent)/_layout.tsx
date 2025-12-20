@@ -5,7 +5,7 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { Tabs, router, usePathname } from "expo-router";
-import { supabase } from "../../lib/supabase";
+import { supabase, signOutUsername } from "../../lib/supabase";
 import { TabIcon } from "../../components/TabIcon";
 import { memorialColors } from "../../constants/memorialTheme"; // ✨ NEW: Memorial theme
 import { GlassTabBar } from "../../components/GlassTabBar";
@@ -46,7 +46,7 @@ export default function AgentTabsLayout() {
         console.error("Error fetching profile:", error);
         // 🛡️ SECURITY: Only sign out if it's strictly an auth/permissions issue
         if (error.code === "PGRST116" || error.message.includes("JWT")) {
-          await supabase.auth.signOut();
+          await signOutUsername();
           router.replace("/login");
           return;
         }

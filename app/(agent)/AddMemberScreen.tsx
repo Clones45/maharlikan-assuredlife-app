@@ -558,6 +558,7 @@ export default function AddMemberScreen() {
         <TextInput
           style={styles.input}
           placeholder="Enter Access Code"
+          placeholderTextColor={memorialColors.textSecondary}
           value={accessCode}
           onChangeText={setAccessCode}
           autoCapitalize="characters"
@@ -574,6 +575,7 @@ export default function AddMemberScreen() {
         <TextInput
           style={styles.input}
           placeholder="AF No"
+          placeholderTextColor={memorialColors.textSecondary}
           value={mafNo}
           onChangeText={setMafNo}
         />
@@ -582,6 +584,7 @@ export default function AddMemberScreen() {
         <TextInput
           style={styles.input}
           placeholder="Last Name"
+          placeholderTextColor={memorialColors.textSecondary}
           value={lastName}
           onChangeText={setLastName}
         />
@@ -589,6 +592,7 @@ export default function AddMemberScreen() {
         <TextInput
           style={styles.input}
           placeholder="First Name"
+          placeholderTextColor={memorialColors.textSecondary}
           value={firstName}
           onChangeText={setFirstName}
         />
@@ -597,6 +601,7 @@ export default function AddMemberScreen() {
         <TextInput
           style={styles.input}
           placeholder="Middle Name (optional)"
+          placeholderTextColor={memorialColors.textSecondary}
           value={middleName}
           onChangeText={setMiddleName}
         />
@@ -627,9 +632,11 @@ export default function AddMemberScreen() {
             >
               <View pointerEvents="none">
                 <TextInput
-                  style={styles.input}
-                  placeholder="Select Birthdate (YYYY-MM-DD)"
-                  value={birthDate}
+                  style={[
+                    styles.input,
+                    !birthDate && { color: memorialColors.textSecondary }, // ⚡ FIX: Fake placeholder color
+                  ]}
+                  value={birthDate || "Select Birthdate (YYYY-MM-DD)"} // ⚡ FIX: Render as value
                   editable={false}
                 />
               </View>
@@ -650,6 +657,7 @@ export default function AddMemberScreen() {
         <TextInput
           style={styles.input}
           placeholder="Age"
+          placeholderTextColor={memorialColors.textSecondary}
           keyboardType="numeric"
           value={age}
           onChangeText={setAge}
@@ -659,6 +667,7 @@ export default function AddMemberScreen() {
         <TextInput
           style={styles.input}
           placeholder="Address"
+          placeholderTextColor={memorialColors.textSecondary}
           multiline
           value={address}
           onChangeText={setAddress}
@@ -668,6 +677,7 @@ export default function AddMemberScreen() {
         <TextInput
           style={styles.input}
           placeholder="Contact Number"
+          placeholderTextColor={memorialColors.textSecondary}
           value={contactNumber}
           onChangeText={setContactNumber}
         />
@@ -675,6 +685,7 @@ export default function AddMemberScreen() {
         <TextInput
           style={styles.input}
           placeholder="Phone Number"
+          placeholderTextColor={memorialColors.textSecondary}
           value={phoneNumber}
           onChangeText={setPhoneNumber}
         />
@@ -682,38 +693,81 @@ export default function AddMemberScreen() {
         <TextInput
           style={styles.input}
           placeholder="Religion"
+          placeholderTextColor={memorialColors.textSecondary}
           value={religion}
           onChangeText={setReligion}
         />
 
         {/* GENDER DROPDOWN */}
         <Text style={styles.label}>Gender</Text>
-        <Picker selectedValue={gender} onValueChange={(v) => setGender(v)}>
-          <Picker.Item label="-- Select Gender --" value="" />
-          <Picker.Item label="Male" value="Male" />
-          <Picker.Item label="Female" value="Female" />
-        </Picker>
+        <View style={styles.pickerContainer}>
+          <Picker
+            selectedValue={gender}
+            onValueChange={(v) => setGender(v)}
+            style={{
+              color: gender
+                ? memorialColors.textPrimary
+                : memorialColors.textSecondary,
+            }}
+            dropdownIconColor={memorialColors.textPrimary}
+          >
+            <Picker.Item
+              label="-- Select Gender --"
+              value=""
+              color={memorialColors.textSecondary}
+            />
+            <Picker.Item label="Male" value="Male" />
+            <Picker.Item label="Female" value="Female" />
+          </Picker>
+          {!gender && (
+            <View style={styles.pickerPlaceholderOverlay} pointerEvents="none">
+              <Text style={styles.pickerPlaceholderText}>
+                -- Select Gender --
+              </Text>
+            </View>
+          )}
+        </View>
 
         {/* CIVIL STATUS DROPDOWN */}
         <Text style={styles.label}>Civil Status</Text>
-        <Picker
-          selectedValue={civilStatus}
-          onValueChange={(v) => setCivilStatus(v)}
-        >
-          <Picker.Item label="-- Select Civil Status --" value="" />
-          <Picker.Item label="Single" value="Single" />
-          <Picker.Item label="Married" value="Married" />
-          <Picker.Item label="Widower" value="Widower" />
-          <Picker.Item label="Widow" value="Widow" />
-          <Picker.Item label="Separated" value="Separated" />
-          <Picker.Item label="Divorced" value="Divorced" />
-          <Picker.Item label="Annulled" value="Annulled" />
-        </Picker>
+        <View style={styles.pickerContainer}>
+          <Picker
+            selectedValue={civilStatus}
+            onValueChange={(v) => setCivilStatus(v)}
+            style={{
+              color: civilStatus
+                ? memorialColors.textPrimary
+                : memorialColors.textSecondary,
+            }}
+            dropdownIconColor={memorialColors.textPrimary}
+          >
+            <Picker.Item
+              label="-- Select Civil Status --"
+              value=""
+              color={memorialColors.textSecondary}
+            />
+            <Picker.Item label="Single" value="Single" />
+            <Picker.Item label="Married" value="Married" />
+            <Picker.Item label="Widower" value="Widower" />
+            <Picker.Item label="Widow" value="Widow" />
+            <Picker.Item label="Separated" value="Separated" />
+            <Picker.Item label="Divorced" value="Divorced" />
+            <Picker.Item label="Annulled" value="Annulled" />
+          </Picker>
+          {!civilStatus && (
+            <View style={styles.pickerPlaceholderOverlay} pointerEvents="none">
+              <Text style={styles.pickerPlaceholderText}>
+                -- Select Civil Status --
+              </Text>
+            </View>
+          )}
+        </View>
 
         <Text style={styles.label}>Nationality</Text>
         <TextInput
           style={styles.input}
           placeholder="Nationality"
+          placeholderTextColor={memorialColors.textSecondary}
           value={nationality}
           onChangeText={setNationality}
         />
@@ -721,6 +775,7 @@ export default function AddMemberScreen() {
         <TextInput
           style={styles.input}
           placeholder="Birthplace"
+          placeholderTextColor={memorialColors.textSecondary}
           value={birthplace}
           onChangeText={setBirthplace}
         />
@@ -728,6 +783,7 @@ export default function AddMemberScreen() {
         <TextInput
           style={styles.input}
           placeholder="Zipcode"
+          placeholderTextColor={memorialColors.textSecondary}
           value={zipcode}
           onChangeText={setZipcode}
         />
@@ -735,6 +791,7 @@ export default function AddMemberScreen() {
         <TextInput
           style={styles.input}
           placeholder="Height"
+          placeholderTextColor={memorialColors.textSecondary}
           value={height}
           onChangeText={setHeight}
         />
@@ -742,6 +799,7 @@ export default function AddMemberScreen() {
         <TextInput
           style={styles.input}
           placeholder="Weight"
+          placeholderTextColor={memorialColors.textSecondary}
           value={weight}
           onChangeText={setWeight}
         />
@@ -749,6 +807,7 @@ export default function AddMemberScreen() {
         <TextInput
           style={styles.input}
           placeholder="Occupation"
+          placeholderTextColor={memorialColors.textSecondary}
           value={occupation}
           onChangeText={setOccupation}
         />
@@ -759,44 +818,91 @@ export default function AddMemberScreen() {
         <Text style={styles.sectionTitle}>Membership & Plan</Text>
 
         <Text style={styles.label}>Membership</Text>
-        <Picker
-          selectedValue={membership}
-          onValueChange={(v) => setMembership(v)}
-        >
-          <Picker.Item label="-- Select --" value="" />
-          <Picker.Item label="Insurable" value="Insurable" />
-          <Picker.Item label="Non-Insurable" value="Non-Insurable" />
-        </Picker>
+        <View style={styles.pickerContainer}>
+          <Picker
+            selectedValue={membership}
+            onValueChange={(v) => setMembership(v)}
+            style={{
+              color: membership
+                ? memorialColors.textPrimary
+                : memorialColors.textSecondary,
+            }}
+            dropdownIconColor={memorialColors.textPrimary}
+          >
+            <Picker.Item
+              label="-- Select --"
+              value=""
+              color={memorialColors.textSecondary}
+            />
+            <Picker.Item label="Insurable" value="Insurable" />
+            <Picker.Item label="Non-Insurable" value="Non-Insurable" />
+          </Picker>
+          {!membership && (
+            <View style={styles.pickerPlaceholderOverlay} pointerEvents="none">
+              <Text style={styles.pickerPlaceholderText}>-- Select --</Text>
+            </View>
+          )}
+        </View>
 
         <Text style={styles.label}>PACKAGE Type</Text>
-        <Picker selectedValue={planType} onValueChange={handlePlanChange}>
-          <Picker.Item label="-- Select --" value="" />
-          <Picker.Item label="PACKAGE A1" value="PACKAGE A1" />
-          <Picker.Item label="PACKAGE A2" value="PACKAGE A2" />
-          <Picker.Item label="PACKAGE B1" value="PACKAGE B1" />
-          <Picker.Item label="PACKAGE B2" value="PACKAGE B2" />
-          <Picker.Item label="CARD" value="CARD" />
-        </Picker>
+        <View style={styles.pickerContainer}>
+          <Picker
+            selectedValue={planType}
+            onValueChange={handlePlanChange}
+            style={{
+              color: planType
+                ? memorialColors.textPrimary
+                : memorialColors.textSecondary,
+            }}
+            dropdownIconColor={memorialColors.textPrimary}
+          >
+            <Picker.Item
+              label="-- Select --"
+              value=""
+              color={memorialColors.textSecondary}
+            />
+            <Picker.Item label="PACKAGE A1" value="PACKAGE A1" />
+            <Picker.Item label="PACKAGE A2" value="PACKAGE A2" />
+            <Picker.Item label="PACKAGE B1" value="PACKAGE B1" />
+            <Picker.Item label="PACKAGE B2" value="PACKAGE B2" />
+            <Picker.Item label="CARD" value="CARD" />
+          </Picker>
+          {!planType && (
+            <View style={styles.pickerPlaceholderOverlay} pointerEvents="none">
+              <Text style={styles.pickerPlaceholderText}>-- Select --</Text>
+            </View>
+          )}
+        </View>
 
         <Text style={styles.label}>Casket Type</Text>
         <TextInput
-          style={styles.input}
-          placeholder="Casket Type"
-          value={casketType}
+          style={[
+            styles.input,
+            !casketType && { color: memorialColors.textSecondary },
+          ]}
+          value={casketType || "Casket Type"}
           editable={false}
         />
         <Text style={styles.label}>Contracted Price</Text>
         <TextInput
-          style={styles.input}
-          placeholder="Contracted Price"
-          value={contractedPrice != null ? String(contractedPrice) : ""}
+          style={[
+            styles.input,
+            contractedPrice == null && { color: memorialColors.textSecondary },
+          ]}
+          value={
+            contractedPrice != null
+              ? String(contractedPrice)
+              : "Contracted Price"
+          }
           editable={false}
         />
         <Text style={styles.label}>Monthly Due</Text>
         <TextInput
-          style={styles.input}
-          placeholder="Monthly Due"
-          value={monthlyDue != null ? String(monthlyDue) : ""}
+          style={[
+            styles.input,
+            monthlyDue == null && { color: memorialColors.textSecondary },
+          ]}
+          value={monthlyDue != null ? String(monthlyDue) : "Monthly Due"}
           editable={false}
         />
       </View>
@@ -814,6 +920,7 @@ export default function AddMemberScreen() {
             <TextInput
               style={styles.input}
               placeholder="Last Name"
+              placeholderTextColor={memorialColors.textSecondary}
               value={b.lastName}
               onChangeText={(v) => updateBeneficiary(index, "lastName", v)}
             />
@@ -821,6 +928,7 @@ export default function AddMemberScreen() {
             <TextInput
               style={styles.input}
               placeholder="First Name"
+              placeholderTextColor={memorialColors.textSecondary}
               value={b.firstName}
               onChangeText={(v) => updateBeneficiary(index, "firstName", v)}
             />
@@ -828,6 +936,7 @@ export default function AddMemberScreen() {
             <TextInput
               style={styles.input}
               placeholder="Middle Name (optional)"
+              placeholderTextColor={memorialColors.textSecondary}
               value={b.middleName}
               onChangeText={(v) => updateBeneficiary(index, "middleName", v)}
             />
@@ -835,6 +944,7 @@ export default function AddMemberScreen() {
             <TextInput
               style={styles.input}
               placeholder="Relationship (e.g. SON, HUSBAND)"
+              placeholderTextColor={memorialColors.textSecondary}
               value={b.relation}
               onChangeText={(v) => updateBeneficiary(index, "relation", v)}
             />
@@ -842,6 +952,7 @@ export default function AddMemberScreen() {
             <TextInput
               style={styles.input}
               placeholder="Address (optional)"
+              placeholderTextColor={memorialColors.textSecondary}
               value={b.address}
               onChangeText={(v) => updateBeneficiary(index, "address", v)}
             />
@@ -869,9 +980,11 @@ export default function AddMemberScreen() {
               >
                 <View pointerEvents="none">
                   <TextInput
-                    style={styles.input}
-                    placeholder="Select Birthdate (YYYY-MM-DD)"
-                    value={b.birthDate}
+                    style={[
+                      styles.input,
+                      !b.birthDate && { color: memorialColors.textSecondary },
+                    ]}
+                    value={b.birthDate || "Select Birthdate (YYYY-MM-DD)"}
                     editable={false}
                   />
                 </View>
@@ -882,6 +995,7 @@ export default function AddMemberScreen() {
             <TextInput
               style={styles.input}
               placeholder="Age (optional)"
+              placeholderTextColor={memorialColors.textSecondary}
               keyboardType="numeric"
               value={b.age}
               onChangeText={(v) => updateBeneficiary(index, "age", v)}
@@ -1013,6 +1127,28 @@ const styles = StyleSheet.create({
     backgroundColor: memorialColors.softWhite,
     fontSize: memorialFonts.md,
     color: memorialColors.textPrimary,
+    minHeight: 50, // ⚡ FIX: Prevent clipping on Samsung/Xiaomi
+  },
+  pickerContainer: {
+    borderWidth: 1,
+    borderColor: memorialColors.border,
+    borderRadius: memorialBorderRadius.md,
+    marginBottom: memorialSpacing.sm,
+    backgroundColor: memorialColors.softWhite,
+    justifyContent: "center", // Center the picker text vertically
+    height: 50, // Match aprox height of inputs
+    position: "relative", // Ensure absolute child works
+  },
+  pickerPlaceholderOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: memorialColors.softWhite, // Opaque to hide flaky native text
+    justifyContent: "center",
+    paddingHorizontal: memorialSpacing.md, // Match Picker padding
+    right: 40, // Leave space for dropdown arrow icon
+  },
+  pickerPlaceholderText: {
+    color: memorialColors.textSecondary,
+    fontSize: memorialFonts.md,
   },
   // 🎨 VISUAL: Memorial-themed buttons
   primaryBtn: {

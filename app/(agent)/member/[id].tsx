@@ -171,7 +171,8 @@ export default function AgentMemberDetail() {
         }
         monthsSinceStart = Math.max(0, monthsSinceStart);
 
-        const monthsPaid = paymentsCount || 0;
+        const monthlyDue = Number(m.monthly_due) || 0;
+        const monthsPaid = monthlyDue > 0 ? (totalPaid / monthlyDue) : (paymentsCount || 0);
         const monthsBehind = Math.max(0, monthsSinceStart - monthsPaid);
 
         if (monthsBehind >= 1 && monthsBehind < 2) {

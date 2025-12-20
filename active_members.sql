@@ -70,8 +70,9 @@ AS $$
       m.phone_number,
 
       -- months paid
-      COUNT(c.id) AS months_paid,
-
+      -- months paid changed to sum of payment / monthly_due
+      (COALESCE(SUM(c.payment), 0) / NULLIF(m.monthly_due, 0)) AS months_paid,
+      
       -- months since start
       (
         DATE_PART('year', AGE(CURRENT_DATE, m.plan_start_date)) * 12 +
@@ -82,7 +83,7 @@ AS $$
         (
           DATE_PART('year', AGE(CURRENT_DATE, m.plan_start_date)) * 12 +
           DATE_PART('month', AGE(CURRENT_DATE, m.plan_start_date))
-        ) - COUNT(c.id)
+        ) - (COALESCE(SUM(c.payment), 0) / NULLIF(m.monthly_due, 0))
       ) AS months_behind
 
   FROM members m
@@ -96,7 +97,7 @@ AS $$
         (
           DATE_PART('year', AGE(CURRENT_DATE, m.plan_start_date)) * 12 +
           DATE_PART('month', AGE(CURRENT_DATE, m.plan_start_date))
-        ) - COUNT(c.id)
+        ) - (COALESCE(SUM(c.payment), 0) / NULLIF(m.monthly_due, 0))
       ) < 1
   ORDER BY m.last_name ASC, m.first_name ASC;
 $$;

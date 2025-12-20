@@ -73,16 +73,19 @@ AS $$
       m.membership_paid,
       m.membership_paid_date,
       m.phone_number,
-      COUNT(c.id) AS months_paid,
+      -- months paid changed to sum of payment / monthly_due
+      (COALESCE(SUM(c.payment), 0) / NULLIF(m.monthly_due, 0)) AS months_paid,
+
       (
           DATE_PART('year', AGE(CURRENT_DATE, m.plan_start_date)) * 12 +
           DATE_PART('month', AGE(CURRENT_DATE, m.plan_start_date))
       ) AS months_since_start,
+
       (
           (
               DATE_PART('year', AGE(CURRENT_DATE, m.plan_start_date)) * 12 +
               DATE_PART('month', AGE(CURRENT_DATE, m.plan_start_date))
-          ) - COUNT(c.id)
+          ) - (COALESCE(SUM(c.payment), 0) / NULLIF(m.monthly_due, 0))
       ) AS months_behind
   FROM members m
   LEFT JOIN collections c ON c.member_id = m.id
@@ -94,7 +97,7 @@ AS $$
             (
                 DATE_PART('year', AGE(CURRENT_DATE, m.plan_start_date)) * 12 +
                 DATE_PART('month', AGE(CURRENT_DATE, m.plan_start_date))
-            ) - COUNT(c.id)
+            ) - (COALESCE(SUM(c.payment), 0) / NULLIF(m.monthly_due, 0))
         ) >= 2
     AND 
         -- months_behind <= 3
@@ -102,7 +105,7 @@ AS $$
             (
                 DATE_PART('year', AGE(CURRENT_DATE, m.plan_start_date)) * 12 +
                 DATE_PART('month', AGE(CURRENT_DATE, m.plan_start_date))
-            ) - COUNT(c.id)
+            ) - (COALESCE(SUM(c.payment), 0) / NULLIF(m.monthly_due, 0))
         ) <3
   ORDER BY m.last_name ASC, m.first_name ASC;
 $$;
