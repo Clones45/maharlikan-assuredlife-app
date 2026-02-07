@@ -7,14 +7,14 @@ import { supabase } from "../lib/supabase";
 const PROFILE_TABLE = "users_profile"; // <-- IMPORTANT
 
 export default function Index() {
-  const [msg, setMsg] = useState("Loading…");
+  const [msg, setMsg] = useState(""); // ✨ CHANGED: Empty by default
 
   useEffect(() => {
     let alive = true;
 
     async function run() {
       try {
-        setMsg("Checking session…");
+        // setMsg("Checking session…"); // ✨ REMOVED
         const { data } = await supabase.auth.getSession();
         const session = data?.session;
         if (!alive) return;
@@ -24,7 +24,7 @@ export default function Index() {
           return;
         }
 
-        setMsg("Fetching role…");
+        // setMsg("Fetching role…"); // ✨ REMOVED
         const { data: prof, error } = await supabase
           .from(PROFILE_TABLE)
           .select("role")
@@ -39,10 +39,14 @@ export default function Index() {
         }
 
         const role = String(prof.role).toLowerCase();
-        if (role === "admin") router.replace("/(admin)");
+        // ... (rest of logic)
+        if (role === "admin") {
+          router.replace("/login");
+        }
         else if (role === "agent") router.replace("/(agent)");
-        else if (role === "member") router.replace("/(member)");
+        else if (role === "member") router.replace("/lookup");
         else router.replace("/login");
+
       } catch {
         router.replace("/login");
       }
@@ -50,12 +54,10 @@ export default function Index() {
 
     run();
 
-    // if auth is lost, go to login
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       if (!session) router.replace("/login");
     });
 
-    // safety: if something hangs > 7s, force login
     const t = setTimeout(() => router.replace("/login"), 7000);
 
     return () => {
@@ -68,7 +70,7 @@ export default function Index() {
   return (
     <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#f8fafc" }}>
       <ActivityIndicator size="large" color="#2563eb" />
-      <Text style={{ marginTop: 10, color: "#334155" }}>{msg}</Text>
+      {/* <Text style={{ marginTop: 10, color: "#334155" }}>{msg}</Text> */}
     </View>
   );
 }

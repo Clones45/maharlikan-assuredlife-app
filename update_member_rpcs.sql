@@ -72,16 +72,16 @@ AS $$
       m.membership_paid,
       m.membership_paid_date,
       m.phone_number,
-      COUNT(c.id) AS months_paid,
+      (COALESCE(SUM(CASE WHEN c.is_membership_fee = true THEN 0 ELSE c.payment END), 0) / NULLIF(m.monthly_due, 0)) AS months_paid,
       (
-          DATE_PART('year', AGE(CURRENT_DATE, m.plan_start_date)) * 12 +
-          DATE_PART('month', AGE(CURRENT_DATE, m.plan_start_date))
+          DATE_PART('year', AGE(CURRENT_DATE, COALESCE(m.plan_start_date, m.date_joined, CURRENT_DATE))) * 12 +
+          DATE_PART('month', AGE(CURRENT_DATE, COALESCE(m.plan_start_date, m.date_joined, CURRENT_DATE)))
       ) AS months_since_start,
       (
           (
-              DATE_PART('year', AGE(CURRENT_DATE, m.plan_start_date)) * 12 +
-              DATE_PART('month', AGE(CURRENT_DATE, m.plan_start_date))
-          ) - COUNT(c.id)
+              DATE_PART('year', AGE(CURRENT_DATE, COALESCE(m.plan_start_date, m.date_joined, CURRENT_DATE))) * 12 +
+              DATE_PART('month', AGE(CURRENT_DATE, COALESCE(m.plan_start_date, m.date_joined, CURRENT_DATE)))
+          ) - (COALESCE(SUM(CASE WHEN c.is_membership_fee = true THEN 0 ELSE c.payment END), 0) / NULLIF(m.monthly_due, 0))
       ) AS months_behind
   FROM members m
   LEFT JOIN collections c ON c.member_id = m.id
@@ -91,17 +91,17 @@ AS $$
         -- months_behind >= 1
         (
             (
-                DATE_PART('year', AGE(CURRENT_DATE, m.plan_start_date)) * 12 +
-                DATE_PART('month', AGE(CURRENT_DATE, m.plan_start_date))
-            ) - COUNT(c.id)
+                DATE_PART('year', AGE(CURRENT_DATE, COALESCE(m.plan_start_date, m.date_joined, CURRENT_DATE))) * 12 +
+                DATE_PART('month', AGE(CURRENT_DATE, COALESCE(m.plan_start_date, m.date_joined, CURRENT_DATE)))
+            ) - (COALESCE(SUM(CASE WHEN c.is_membership_fee = true THEN 0 ELSE c.payment END), 0) / NULLIF(m.monthly_due, 0))
         ) >= 1
     AND 
         -- months_behind <= 2
         (
             (
-                DATE_PART('year', AGE(CURRENT_DATE, m.plan_start_date)) * 12 +
-                DATE_PART('month', AGE(CURRENT_DATE, m.plan_start_date))
-            ) - COUNT(c.id)
+                DATE_PART('year', AGE(CURRENT_DATE, COALESCE(m.plan_start_date, m.date_joined, CURRENT_DATE))) * 12 +
+                DATE_PART('month', AGE(CURRENT_DATE, COALESCE(m.plan_start_date, m.date_joined, CURRENT_DATE)))
+            ) - (COALESCE(SUM(CASE WHEN c.is_membership_fee = true THEN 0 ELSE c.payment END), 0) / NULLIF(m.monthly_due, 0))
         ) <= 2;
 $$;
 
@@ -173,19 +173,19 @@ AS $$
       m.agent_id,
       m.created_at,
       m.plan_start_date,
-      COUNT(c.id) AS months_paid,
+      (COALESCE(SUM(CASE WHEN c.is_membership_fee = true THEN 0 ELSE c.payment END), 0) / NULLIF(m.monthly_due, 0)) AS months_paid,
       (
-        DATE_PART('year', AGE(CURRENT_DATE, m.plan_start_date)) * 12 +
-        DATE_PART('month', AGE(CURRENT_DATE, m.plan_start_date))
+        DATE_PART('year', AGE(CURRENT_DATE, COALESCE(m.plan_start_date, m.date_joined, CURRENT_DATE))) * 12 +
+        DATE_PART('month', AGE(CURRENT_DATE, COALESCE(m.plan_start_date, m.date_joined, CURRENT_DATE)))
       ) AS months_since_start
   FROM members m
   LEFT JOIN collections c ON c.member_id = m.id
   WHERE m.plan_type LIKE 'PACKAGE%'
   GROUP BY m.id
-  HAVING COUNT(c.id) < (
+  HAVING (COALESCE(SUM(CASE WHEN c.is_membership_fee = true THEN 0 ELSE c.payment END), 0) / NULLIF(m.monthly_due, 0)) < (
       (
-        DATE_PART('year', AGE(CURRENT_DATE, m.plan_start_date)) * 12 +
-        DATE_PART('month', AGE(CURRENT_DATE, m.plan_start_date))
+        DATE_PART('year', AGE(CURRENT_DATE, COALESCE(m.plan_start_date, m.date_joined, CURRENT_DATE))) * 12 +
+        DATE_PART('month', AGE(CURRENT_DATE, COALESCE(m.plan_start_date, m.date_joined, CURRENT_DATE)))
       ) - 3
   );
 $$;

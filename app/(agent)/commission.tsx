@@ -192,21 +192,14 @@ export default function AgentCommissions() {
       // 0) Determine cutoff range (same as Electron)
       const { gte, lt } = cutoffRange(year, month);
 
-      // 1) Fetch exact rollup for this period (for status only)
-      const { data: rollup } = await supabase
-        .from("agent_commission_rollups")
-        .select("*")
-        .eq("agent_id", agentId)
-        .eq("period_month", month)
-        .eq("period_year", year)
-        .maybeSingle();
-
       // 1.1) Fetch raw commissions for calculation (Desktop Parity)
-      // Added: is_receivable
-      console.log("Fetching commissions for:", { agentId, gte, lt });
+      // Filter by the cutoff range (e.g. Dec 7 - Jan 7) to match 'December' in Admin Panel
+      console.log("Fetching commissions for range:", { agentId, gte, lt });
+
       const { data: rawComms, error: commError } = await supabase
         .from("commissions")
-        .select("amount, commission_type, agent_id, override_commission, is_receivable")
+        .select("amount, commission_type, agent_id, override_commission, is_receivable, collection_id")
+        .eq("agent_id", agentId)
         .gte("date_earned", gte)
         .lt("date_earned", lt);
 
@@ -214,7 +207,7 @@ export default function AgentCommissions() {
 
       // 1.2) Calculate totals clientside (STRICT DESKTOP LOGIC)
       let calcMonthly = 0;
-      let calcTravel = 0; // New bucket from desktop
+      let calcTravel = 0;
       let calcOutright = 0;
       let calcOverrides = 0;
       let calcRecruiter = 0;
@@ -224,7 +217,8 @@ export default function AgentCommissions() {
       let calcTotal = 0;
 
       (rawComms || []).forEach((c: any) => {
-        if (c.agent_id !== agentId) return;
+        // Robust check: matches number or string
+        if (Number(c.agent_id) !== Number(agentId)) return;
 
         const amount = Number(c.amount || 0);
         const overrideAmount = Number(c.override_commission || 0);
@@ -236,7 +230,7 @@ export default function AgentCommissions() {
           const val = (overrideAmount !== 0) ? overrideAmount : amount;
           calcOverrides += val;
           calcTotal += val;
-          calcReceivable += val; // Always Receivable
+          calcReceivable += val;
           return;
         }
 
@@ -244,7 +238,7 @@ export default function AgentCommissions() {
         if (type === "recruiter_bonus") {
           calcRecruiter += amount;
           calcTotal += amount;
-          calcReceivable += amount; // Always Receivable
+          calcReceivable += amount;
           return;
         }
 
@@ -281,97 +275,50 @@ export default function AgentCommissions() {
         else calcNonReceivable += amount;
       });
 
-      // 1.3) Construct the display object
-      // Note: mapping 'travel' + 'monthly' back to 'monthly_commission' to avoid breaking existing UI types immediately,
-      // BUT likely we should expose them if the UI tracks them.
-      // For now, I will map the calculated values to the existing rollup structure as best as possible.
-      // The user wants 'Desktop Parity', so I should probably update the UI to show these specific breakdowns too.
-      // Let's store them in the state or extended rollup.
+      // 1.3) Fetch rollup for status (M+1 mapping to match Admin Panel periods)
+      let rMonth = month + 1;
+      let rYear = year;
+      if (rMonth > 12) { rMonth = 1; rYear++; }
+
+      const { data: rollup } = await supabase
+        .from("agent_commission_rollups")
+        .select("*")
+        .eq("agent_id", agentId)
+        .eq("period_month", rMonth)
+        .eq("period_year", rYear)
+        .maybeSingle();
 
       const calculatedRollup: CommissionRollup = {
         id: rollup?.id ?? 0,
         agent_id: agentId,
         period_year: year,
         period_month: month,
-        monthly_commission: calcMonthly,    // Matches 'Monthly' in desktop
-        membership_commission: calcOutright,// Matches 'Outright' in desktop
-        override_commission: calcOverrides, // Matches 'Overrides' in desktop
-        recruiter_bonus: calcRecruiter,     // Matches 'Recruiter' in desktop
-        grand_total_commission: calcTotal,  // Matches 'Total Earned'
+        monthly_commission: calcMonthly,
+        membership_commission: calcOutright,
+        override_commission: calcOverrides,
+        recruiter_bonus: calcRecruiter,
+        grand_total_commission: calcTotal,
         total_collection: 0,
         status: rollup?.status ?? "unreleased",
         corrected_total: calcTotal,
-
-        // Extended properties for the UI (we'll need to cast or extend the type if we want to be strict TS, 
-        // but for now we can attach them effectively)
         travel_allowance: calcTravel,
         receivable: calcReceivable,
         non_receivable: calcNonReceivable
-      } as any; // Type assertion to allow new fields temporarily
+      } as any;
 
-      setData([calculatedRollup]);
+      setData([{ ...calculatedRollup, total_collection: 0 }]); // Placeholder, will update later
 
-      // 2) Lifetime commission (Now stored in DB)
-      // The trigger automatically updates agent_wallets.lifetime_commission
-      // We'll fetch it in the wallet query below.
-      // const { data: lifetimeRows } = await supabase... (REMOVED MANUAL CALC)
-
-      // 3) Eligibility (Rule A OR Rule B using same-member logic)
-      const { data: allColls } = await supabase
-        .from("collections")
-        .select("member_id, is_membership_fee, payment_for, payment")
-        .eq("agent_id", agentId)
-        .gte("date_paid", gte)
-        .lt("date_paid", lt);
-
-      const list = allColls || [];
-
-      // Calculate total collection client-side
-      const totalColl = list.reduce((sum, item) => sum + (Number(item.payment) || 0), 0);
-
-      // Update the data object with total collection
-      setData(prev => {
-        if (!prev[0]) return prev;
-        return [{ ...prev[0], total_collection: totalColl }];
+      // 3) Eligibility (Server-Side Check for Reliability)
+      const { data: isEligible, error: agrErr } = await supabase.rpc('check_agr_eligibility', {
+        p_agent_id: agentId,
+        p_year: year,
+        p_month: month
       });
 
-      // ---------- RULE A ----------
-      const membershipCount = list.filter(x => x.is_membership_fee === true).length;
-      setActiveCount(membershipCount); // progress bar update
-      const ruleA = membershipCount >= 3;
+      if (agrErr) console.error("AGR Check Error:", agrErr);
+      setIsAGRCompliant(!!isEligible);
 
-      // ---------- RULE B (same member must pay membership + regular) ----------
-      const memberMap: Record<number, any[]> = {};
-      for (const p of list) {
-        if (!p.member_id) continue;
-        if (!memberMap[p.member_id]) memberMap[p.member_id] = [];
-        memberMap[p.member_id].push(p);
-      }
-
-      let ruleB = false;
-      for (const memberId in memberMap) {
-        const payments = memberMap[memberId];
-
-        const hasMembership = payments.some(p => p.is_membership_fee === true);
-        const hasRegular = payments.some(
-          p => p.is_membership_fee === false && p.payment_for === "regular"
-        );
-
-        if (hasMembership && hasRegular) {
-          ruleB = true;
-          break;
-        }
-      }
-
-      // ---------- FINAL ELIGIBILITY ----------
-      const eligibleNextMonth = ruleA || ruleB;
-      setIsAGRCompliant(eligibleNextMonth);
-
-      console.log("Eligibility:", { ruleA, ruleB, eligibleNextMonth });
-
-
-
-      // 4) Collections list for this cutoff (exactly like Electron, then enrich with member names)
+      // 4) Collections list for this cutoff
       const { data: colls, error: collErr } = await supabase
         .from("collections")
         .select("id, date_paid, or_no, payment_for, payment, member_id")
@@ -380,91 +327,54 @@ export default function AgentCommissions() {
         .lt("date_paid", lt)
         .order("date_paid", { ascending: true });
 
-      if (collErr) {
-        console.error("Collections error:", collErr);
-        setCollections([]);
-      } else {
-        const raw = (colls as any[]) || [];
+      let collectionsData: CollectionRow[] = [];
+      let totalColl = 0;
 
-        const memberIds = Array.from(
-          new Set(
-            raw
-              .map((c) => c.member_id)
-              .filter((id: any) => id !== null && id !== undefined)
-          )
-        ) as number[];
+      if (!collErr && colls) {
+        totalColl = colls.reduce((sum: number, item: any) => sum + (Number(item.payment) || 0), 0);
 
-        let membersById: Record<
-          number,
-          { first_name: string | null; last_name: string | null }
-        > = {};
+        const memberIds = Array.from(new Set(colls.map((c: any) => c.member_id).filter((id: any) => !!id))) as number[];
+        let membersById: Record<number, { first_name: string | null; last_name: string | null }> = {};
 
         if (memberIds.length > 0) {
-          const { data: members, error: memErr } = await supabase
-            .from("members")
-            .select("id, first_name, last_name")
-            .in("id", memberIds);
-
-          if (memErr) {
-            console.error("Members lookup error:", memErr);
-          } else {
-            membersById = {};
-            (members as any[]).forEach((m: any) => {
-              membersById[m.id] = {
-                first_name: m.first_name ?? null,
-                last_name: m.last_name ?? null,
-              };
-            });
-          }
+          const { data: members } = await supabase.from("members").select("id, first_name, last_name").in("id", memberIds);
+          (members || []).forEach((m: any) => { membersById[m.id] = { first_name: m.first_name, last_name: m.last_name }; });
         }
 
-        const fixed: CollectionRow[] = raw.map((c: any) => ({
+        collectionsData = colls.map((c: any) => ({
           id: c.id,
           date_paid: c.date_paid,
           or_no: c.or_no,
           payment_for: c.payment_for,
           payment: c.payment,
           member_id: c.member_id,
-          members:
-            c.member_id && membersById[c.member_id]
-              ? membersById[c.member_id]
-              : null,
+          members: membersById[c.member_id] || null,
         }));
-
-        setCollections(fixed);
       }
 
-      // 5) Wallet / withdrawable balance + LIFETIME COMMISSION
-      const { data: wallet, error: wErr } = await supabase
+      setCollections(collectionsData);
+      setData([{ ...calculatedRollup, total_collection: totalColl }]);
+
+      // 5) Wallet
+      const { data: wallet } = await supabase
         .from("agent_wallets")
-        .select("balance, lifetime_commission") // Added lifetime_commission
+        .select("balance, lifetime_commission")
         .eq("agent_id", agentId)
         .maybeSingle();
 
-      if (wErr) {
-        console.error("Error loading wallet:", wErr);
-        setWalletBalance(0);
-        setLifetimeTotal(0);
-        setCanWithdraw(false);
-      } else {
-        const bal = Number(wallet?.balance || 0);
-        const life = Number(wallet?.lifetime_commission || 0);
+      setWalletBalance(Number(wallet?.balance || 0));
+      setLifetimeTotal(Number(wallet?.lifetime_commission || 0));
 
-        setWalletBalance(bal);
-        setLifetimeTotal(life);
+      const { data: pendingReq } = await supabase
+        .from("withdrawal_requests")
+        .select("id")
+        .eq("agent_id", agentId)
+        .eq("status", "pending")
+        .maybeSingle();
 
-        // NEW: Check for pending requests
-        const { data: pendingReq } = await supabase
-          .from("withdrawal_requests")
-          .select("id")
-          .eq("agent_id", agentId)
-          .eq("status", "pending")
-          .maybeSingle();
+      setHasPendingRequest(!!pendingReq);
+      setCanWithdraw(Number(wallet?.balance || 0) >= 500);
 
-        setHasPendingRequest(!!pendingReq);
-
-        setCanWithdraw(bal >= 500); // rule: at least ₱500 to withdraw
-      }
     } catch (err) {
       console.error(err);
     }
@@ -489,7 +399,7 @@ export default function AgentCommissions() {
           filter: `agent_id=eq.${agentId}`,
         },
         async () => {
-          console.log("🔵 LIVE UPDATE RECEIVED → REFRESHING...");
+          console.log("🔵 LIVE UPDATE RECEIVED (ROLLUP) → REFRESHING...");
           await fetchCommissions();
         }
       )
@@ -503,6 +413,20 @@ export default function AgentCommissions() {
           filter: `agent_id=eq.${agentId}`
         },
         async () => {
+          await fetchCommissions();
+        }
+      )
+      // NEW: Listen to collections (for AGR updates)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "collections",
+          filter: `agent_id=eq.${agentId}`
+        },
+        async () => {
+          console.log("🔵 LIVE UPDATE RECEIVED (COLLECTIONS) → REFRESHING...");
           await fetchCommissions();
         }
       )

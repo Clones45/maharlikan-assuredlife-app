@@ -11,6 +11,7 @@ import {
   ScrollView,
   TouchableOpacity,
 } from "react-native";
+import { router } from "expo-router";
 import { supabase } from "../../lib/supabase";
 import BackgroundLogo from "../../components/BackgroundLogo";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -639,6 +640,18 @@ export default function Promotions() {
           )}
         </TouchableOpacity>
 
+        {/* 🤝 NEW: Recruitment Action Button */}
+        <TouchableOpacity
+          style={styles.recruitButton}
+          onPress={() => router.push("/(agent)/add-recruit")}
+          activeOpacity={0.8}
+        >
+          <View style={styles.recruitButtonContent}>
+            <Text style={styles.recruitIcon}>➕</Text>
+            <Text style={styles.recruitButtonText}>Add New Recruited Agent</Text>
+          </View>
+        </TouchableOpacity>
+
         {/* 🎨 VISUAL: Memorial-themed toggle buttons */}
         <View style={styles.tabContainer}>
           <TouchableOpacity
@@ -784,6 +797,32 @@ const styles = StyleSheet.create({
     fontStyle: "italic",
     fontSize: memorialFonts.sm,
     color: memorialColors.textMuted,
+  },
+
+  // 🤝 NEW: Recruitment button styles
+  recruitButton: {
+    backgroundColor: memorialColors.primary,
+    marginHorizontal: memorialSpacing.lg,
+    marginBottom: memorialSpacing.md,
+    borderRadius: memorialBorderRadius.lg,
+    padding: memorialSpacing.md,
+    ...memorialShadows.md,
+  },
+  recruitButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recruitIcon: {
+    fontSize: 18,
+    marginRight: 10,
+  },
+  recruitButtonText: {
+    color: memorialColors.white,
+    fontWeight: memorialFonts.bold,
+    fontSize: memorialFonts.md,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
   },
 
   // 🎨 VISUAL: Memorial-themed tabs

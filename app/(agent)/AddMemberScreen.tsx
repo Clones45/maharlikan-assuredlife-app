@@ -322,6 +322,11 @@ export default function AddMemberScreen() {
       return false;
     }
 
+    if (accessCode.trim().toUpperCase().startsWith("A")) {
+      showStatus("error", "Invalid Code", "This code is for Agent Recruitment only.");
+      return false;
+    }
+
     if (!mafNo.trim()) {
       showStatus("error", "AF No", "AF No is required.");
       return false;

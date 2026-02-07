@@ -22,8 +22,8 @@ import {
 } from "../lib/supabase";
 import { ToastProvider } from "../components/ToastProvider";
 
-const PUBLIC_PREFIXES = ["/lookup", "/promotions"];
-const ADMIN_HOME = "/(admin)";
+const PUBLIC_PREFIXES = ["/lookup", "/promotions", "/forgot-password"];
+const ADMIN_HOME = "/login";
 const AGENT_HOME = "/(agent)/profile";
 const LOGIN_ROUTE = "/login";
 
@@ -159,6 +159,7 @@ function AuthGate() {
         if (!alive) return;
 
         if (role === "admin") go(ADMIN_HOME);
+        else if (role === "member") go("/lookup");
         else go(AGENT_HOME);
       }
 

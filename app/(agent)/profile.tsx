@@ -15,10 +15,14 @@ import {
   StyleSheet,
   RefreshControl,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons"; // ✨ NEW: Import Ionicons
+import { router } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { decode } from "base64-arraybuffer";
 import { supabase, signOutUsername } from "../../lib/supabase";
 import { memorialColors, memorialSpacing, memorialBorderRadius, memorialFonts, memorialShadows } from "../../constants/memorialTheme";
+import AddEmailModal from "../../components/AddEmailModal"; // ✨ NEW: Import Modal
+import VerifyPasswordModal from "../../components/VerifyPasswordModal"; // ✨ NEW: Import Password Verification Modal
 
 const peso = (n: number): string =>
   `₱${(Number(n) || 0).toLocaleString("en-PH", {
@@ -43,8 +47,19 @@ export default function AgentProfile() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
 
+  // ✨ NEW: Email State
+  const [email, setEmail] = useState("");
+  const [showEmailModal, setShowEmailModal] = useState(false);
+
+  const [oldPass, setOldPass] = useState(""); // ✨ NEW
   const [newPass, setNewPass] = useState("");
   const [confirmPass, setConfirmPass] = useState("");
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+
+  // ✨ NEW: Password Visibility State
+  const [showOldPass, setShowOldPass] = useState(false);
+  const [showNewPass, setShowNewPass] = useState(false);
+  const [showConfirmPass, setShowConfirmPass] = useState(false);
 
   // ⚙️ UNCHANGED: All image picker and upload logic
   const pickAgentPhoto = async () => {
@@ -175,6 +190,9 @@ export default function AgentProfile() {
       const { data: userData } = await supabase.auth.getUser();
       if (!userData?.user) throw new Error("User not found");
 
+      // ✨ NEW: Set Email
+      setEmail(userData.user.email || "");
+
       const { data: profile } = await supabase
         .from("users_profile")
         .select("agent_id")
@@ -253,26 +271,26 @@ export default function AgentProfile() {
     }
   };
 
-  // ⚙️ UNCHANGED: Password change logic
+  // ⚙️ UPDATED: Password change logic
   const changePassword = async () => {
-    if (newPass.length < 6)
-      return Alert.alert("Weak password", "Minimum 6 characters");
+    if (!oldPass) return Alert.alert("Error", "Please enter your old password");
+    if (newPass.length < 6) return Alert.alert("Weak password", "Minimum 6 characters");
+    if (newPass !== confirmPass) return Alert.alert("Error", "Passwords do not match");
 
-    if (newPass !== confirmPass)
-      return Alert.alert("Error", "Passwords do not match");
-
+    setUploading(true);
     try {
-      setUploading(true);
-
-      const { error } = await supabase.auth.updateUser({
-        password: newPass,
+      // 1. Verify Old Password
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email,
+        password: oldPass,
       });
 
-      if (error) throw error;
+      if (error) {
+        throw new Error("Incorrect old password");
+      }
 
-      Alert.alert("Success", "Password updated");
-      setNewPass("");
-      setConfirmPass("");
+      // 2. If valid, open the OTP modal
+      setShowPasswordModal(true);
     } catch (err: any) {
       Alert.alert("Error", err.message);
     } finally {
@@ -349,6 +367,31 @@ export default function AgentProfile() {
         </View>
       </View>
 
+      {/* 💎 LUXURIOUS: Recruitment Card */}
+      <View style={styles.glassCard}>
+        <View style={styles.cardHeader}>
+          <Text style={styles.cardIcon}>🤝</Text>
+          <Text style={styles.cardTitle}>Recruitment</Text>
+        </View>
+        <View style={styles.divider} />
+
+        <Text style={{
+          fontSize: memorialFonts.sm,
+          color: memorialColors.textSecondary,
+          marginBottom: memorialSpacing.lg,
+          fontStyle: 'italic'
+        }}>
+          Grow your team and earn lifetime commissions by recruiting new agents.
+        </Text>
+
+        <TouchableOpacity
+          style={styles.primaryButton}
+          onPress={() => router.push("/(agent)/add-recruit")}
+        >
+          <Text style={styles.primaryButtonText}>Add Recruited Agent</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* 💎 LUXURIOUS: Edit Profile Card */}
       <View style={styles.glassCard}>
         <View style={styles.cardHeader}>
@@ -377,6 +420,25 @@ export default function AgentProfile() {
             placeholder="Enter last name"
             placeholderTextColor={memorialColors.textMuted}
           />
+        </View>
+
+        {/* ✨ NEW: Email Field (Read-only + Change Button) */}
+        <View style={styles.inputGroup}>
+          <Text style={styles.inputLabel}>Email Address</Text>
+          <View style={{ gap: 10 }}>
+            <TextInput
+              style={[styles.luxuryInput, { backgroundColor: '#f3f4f6', color: '#6b7280' }]}
+              value={email}
+              editable={false}
+              placeholder="Email address"
+            />
+            <TouchableOpacity
+              style={styles.secondaryButton}
+              onPress={() => setShowEmailModal(true)}
+            >
+              <Text style={styles.secondaryButtonText}>Change Email</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <TouchableOpacity style={styles.primaryButton} onPress={updateProfile}>
@@ -465,28 +527,58 @@ export default function AgentProfile() {
           <>
             <View style={styles.divider} />
 
+            {/* ✨ NEW: Old Password Field with Eye Icon */}
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>New Password</Text>
-              <TextInput
-                style={styles.luxuryInput}
-                secureTextEntry
-                placeholder="Minimum 6 characters"
-                placeholderTextColor={memorialColors.textMuted}
-                value={newPass}
-                onChangeText={setNewPass}
-              />
+              <Text style={styles.inputLabel}>Old Password</Text>
+              <View style={styles.passwordContainer}>
+                <TextInput
+                  style={styles.passwordInput}
+                  secureTextEntry={!showOldPass}
+                  placeholder="Enter old password"
+                  placeholderTextColor={memorialColors.textMuted}
+                  value={oldPass}
+                  onChangeText={setOldPass}
+                />
+                <TouchableOpacity onPress={() => setShowOldPass(!showOldPass)} style={styles.eyeIcon}>
+                  <Ionicons name={showOldPass ? "eye-off" : "eye"} size={20} color={memorialColors.textMuted} />
+                </TouchableOpacity>
+              </View>
             </View>
 
+            {/* ✨ UPDATED: New Password Field with Eye Icon */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>New Password</Text>
+              <View style={styles.passwordContainer}>
+                <TextInput
+                  style={styles.passwordInput}
+                  secureTextEntry={!showNewPass}
+                  placeholder="Minimum 6 characters"
+                  placeholderTextColor={memorialColors.textMuted}
+                  value={newPass}
+                  onChangeText={setNewPass}
+                />
+                <TouchableOpacity onPress={() => setShowNewPass(!showNewPass)} style={styles.eyeIcon}>
+                  <Ionicons name={showNewPass ? "eye-off" : "eye"} size={20} color={memorialColors.textMuted} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* ✨ UPDATED: Confirm Password Field with Eye Icon */}
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Confirm Password</Text>
-              <TextInput
-                style={styles.luxuryInput}
-                secureTextEntry
-                placeholder="Re-enter new password"
-                placeholderTextColor={memorialColors.textMuted}
-                value={confirmPass}
-                onChangeText={setConfirmPass}
-              />
+              <View style={styles.passwordContainer}>
+                <TextInput
+                  style={styles.passwordInput}
+                  secureTextEntry={!showConfirmPass}
+                  placeholder="Re-enter new password"
+                  placeholderTextColor={memorialColors.textMuted}
+                  value={confirmPass}
+                  onChangeText={setConfirmPass}
+                />
+                <TouchableOpacity onPress={() => setShowConfirmPass(!showConfirmPass)} style={styles.eyeIcon}>
+                  <Ionicons name={showConfirmPass ? "eye-off" : "eye"} size={20} color={memorialColors.textMuted} />
+                </TouchableOpacity>
+              </View>
             </View>
 
             <TouchableOpacity style={styles.primaryButton} onPress={changePassword}>
@@ -505,6 +597,33 @@ export default function AgentProfile() {
       </TouchableOpacity>
 
       <View style={{ height: 40 }} />
+
+      {/* ✨ NEW: Email Modal */}
+      <AddEmailModal
+        visible={showEmailModal}
+        currentEmail={email}
+        canDismiss={true}
+        onClose={() => setShowEmailModal(false)}
+        onSuccess={(newEmail) => {
+          setEmail(newEmail);
+          setShowEmailModal(false);
+          Alert.alert("Success", "Email updated successfully");
+        }}
+      />
+
+      {/* ✨ NEW: Password Verification Modal */}
+      <VerifyPasswordModal
+        visible={showPasswordModal}
+        email={email}
+        newPassword={newPass}
+        onClose={() => setShowPasswordModal(false)}
+        onSuccess={() => {
+          setShowPasswordModal(false);
+          setNewPass("");
+          setConfirmPass("");
+          Alert.alert("Success", "Password updated successfully");
+        }}
+      />
     </ScrollView>
   );
 }
@@ -733,6 +852,30 @@ const styles = StyleSheet.create({
     letterSpacing: memorialFonts.letterSpacing.wider,
     textTransform: "uppercase",
   },
+
+
+  // 💎 LUXURIOUS: Password Input Container
+  passwordContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: memorialColors.white,
+    borderRadius: memorialBorderRadius.md,
+    borderWidth: 2,
+    borderColor: memorialColors.silver,
+    ...memorialShadows.sm,
+  },
+  passwordInput: {
+    flex: 1,
+    paddingVertical: memorialSpacing.lg,
+    paddingHorizontal: memorialSpacing.lg,
+    fontSize: memorialFonts.md,
+    color: memorialColors.black,
+  },
+  eyeIcon: {
+    padding: 10,
+    marginRight: 5,
+  },
+
   secondaryButton: {
     backgroundColor: memorialColors.white,
     borderRadius: memorialBorderRadius.md,

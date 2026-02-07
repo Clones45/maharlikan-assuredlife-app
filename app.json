@@ -3,7 +3,7 @@
     "name": "Maharlikan AssuredLife",
     "slug": "maharlikan-newapp",
     "scheme": "maharlikan-assuredlife",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/logo.png",
     "userInterfaceStyle": "light",
@@ -44,9 +44,10 @@
       "enabled": true,
       "checkAutomatically": "ON_LOAD",
       "fallbackToCacheTimeout": 0,
-      "url": "https://u.expo.dev/4772ebc7-60cf-4336-8120-7cab160a6523"
+      "url": "https://u.expo.dev/2547e51b-c2b2-4517-978e-7954590653a2"
     },
     "runtimeVersion": "appVersion",
-    "owner": "clydelian"
+    "owner": "clydelian",
+    "ios": {}
   }
 }

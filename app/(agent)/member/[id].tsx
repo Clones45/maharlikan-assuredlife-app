@@ -130,14 +130,18 @@ export default function AgentMemberDetail() {
     // Fetch Collections to Calculate Balance (Source of Truth)
     const { data: collections, error: cErr } = await supabase
       .from('collections')
-      .select('payment')
-      .eq('member_id', memberId);
+      .select('payment, is_membership_fee, date_paid, created_at')
+      .eq('member_id', memberId)
+      .order('date_paid', { ascending: true });
 
     if (cErr) console.warn("Collections fetch error:", cErr.message);
 
     const rawPayments = collections || [];
-    const totalPaid = rawPayments.reduce((sum, c) => sum + (Number(c.payment) || 0), 0);
-    const paymentsCount = rawPayments.length;
+    // Only count regular payments towards the balance
+    const totalPaid = rawPayments
+      .filter(c => !c.is_membership_fee)
+      .reduce((sum, c) => sum + (Number(c.payment) || 0), 0);
+    const paymentsCount = rawPayments.filter(c => !c.is_membership_fee).length;
 
     // Calculate Status
     let status = 'Active';
@@ -155,35 +159,57 @@ export default function AgentMemberDetail() {
         status = 'Completed';
         statusColor = '#22c55e';
       } else {
-        // Start Date Priority: plan_start_date -> created_at (Fallback)
+        // Start Date
         let startDateVal = m.plan_start_date ? new Date(m.plan_start_date).getTime() : null;
         if (!startDateVal) {
-          startDateVal = new Date(m.created_at || Date.now()).getTime();
+          if (m.date_joined) startDateVal = new Date(m.date_joined).getTime();
+          else startDateVal = new Date(m.created_at || Date.now()).getTime();
         }
         const startDate = new Date(startDateVal);
-        const currentDate = new Date();
 
-        // (YearDiff * 12) + MonthDiff
-        let monthsSinceStart = (currentDate.getFullYear() - startDate.getFullYear()) * 12 + (currentDate.getMonth() - startDate.getMonth());
+        // Find Last Regular Payment
+        const regularPayments = (collections || []).filter((c: any) => !c.is_membership_fee);
+        const lastPayment = regularPayments.length > 0 ? regularPayments[regularPayments.length - 1] : null;
 
-        if (currentDate.getDate() < startDate.getDate()) {
-          monthsSinceStart -= 1;
+        let paidUntilDate = new Date(startDate);
+
+        if (lastPayment) {
+          const lpDate = new Date(lastPayment.date_paid || lastPayment.created_at);
+          const lpAmount = Number(lastPayment.payment) || 0;
+          const mDue = Number(m.monthly_due) || 0;
+
+          if (mDue > 0) {
+            const monthsCovered = lpAmount / mDue;
+            const wholeMonths = Math.floor(monthsCovered);
+            const fraction = monthsCovered - wholeMonths;
+
+            paidUntilDate = new Date(lpDate);
+            paidUntilDate.setMonth(paidUntilDate.getMonth() + wholeMonths);
+            paidUntilDate.setDate(paidUntilDate.getDate() + Math.round(fraction * 30));
+          } else {
+            paidUntilDate = new Date();
+          }
         }
-        monthsSinceStart = Math.max(0, monthsSinceStart);
 
-        const monthlyDue = Number(m.monthly_due) || 0;
-        const monthsPaid = monthlyDue > 0 ? (totalPaid / monthlyDue) : (paymentsCount || 0);
-        const monthsBehind = Math.max(0, monthsSinceStart - monthsPaid);
+        // Calculate Months Behind
+        const now = new Date();
+        let monthsBehind = (now.getFullYear() - paidUntilDate.getFullYear()) * 12 +
+          (now.getMonth() - paidUntilDate.getMonth());
 
-        if (monthsBehind >= 1 && monthsBehind < 2) {
-          status = 'Warning';
-          statusColor = '#eab308';
-        } else if (monthsBehind >= 2 && monthsBehind < 3) {
-          status = 'Lapsable';
-          statusColor = '#f97316';
-        } else if (monthsBehind >= 3) {
+        if (now.getDate() < paidUntilDate.getDate()) {
+          monthsBehind--;
+        }
+        monthsBehind = Math.max(0, monthsBehind);
+
+        if (monthsBehind > 3) {
           status = 'Lapsed';
           statusColor = '#ef4444';
+        } else if (monthsBehind >= 2) {
+          status = 'Lapsable';
+          statusColor = '#f97316';
+        } else if (monthsBehind >= 1) {
+          status = 'Warning';
+          statusColor = '#eab308';
         } else {
           status = 'Active';
           statusColor = '#22c55e';
@@ -307,7 +333,7 @@ export default function AgentMemberDetail() {
               </View>
               <View style={styles.statDivider} />
               <View style={styles.statItem}>
-                <Text style={styles.statLabel}>Since</Text>
+                <Text style={styles.statLabel}>Date of Inception</Text>
                 <Text style={styles.statValue}>{fmtDate(member?.date_joined) || "—"}</Text>
               </View>
             </View>

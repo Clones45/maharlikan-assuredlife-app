@@ -21,6 +21,7 @@ import BackgroundLogo from '../../../components/BackgroundLogo';
 import { memorialColors, memorialSpacing, memorialBorderRadius, memorialFonts, memorialShadows } from '../../../constants/memorialTheme';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import { calculateContestability } from '../../../utils/contestability';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -49,6 +50,8 @@ type SoaData = {
   status: MemberStatus;
   statusColor: string;
   amount_due_calculated?: number;
+  contestability_period: number;
+  inception_date: string;
 };
 
 
@@ -105,7 +108,7 @@ export default function PublicSOAScreen() {
           // 1. LOOKUP MEMBER ID first
           const { data: members, error: searchErr } = await supabase
             .from('members')
-            .select('id, maf_no, first_name, last_name, plan_type, contracted_price, monthly_due, address, birth_date, agent_id, created_at, plan_start_date')
+            .select('id, maf_no, first_name, last_name, plan_type, contracted_price, monthly_due, address, birth_date, agent_id, created_at, plan_start_date, date_joined')
             .eq('maf_no', mafParam)
             .ilike('last_name', `%${lastParam}%`)
             .limit(1);
@@ -153,6 +156,8 @@ export default function PublicSOAScreen() {
 
           let cumulativePaid = 0;
 
+          let lastActivityDate = new Date(member.plan_start_date || member.created_at);
+
           for (const c of rawPayments) {
             const amt = Number(c.payment) || 0;
             cumulativePaid += amt;
@@ -170,6 +175,24 @@ export default function PublicSOAScreen() {
             const cid = c.collector_id || c.agent_id;
             const cName = cid ? await fetchAgentName(cid) : '—';
 
+            // --- Reinstatement Logic (Client-Side Dynamic) ---
+            const paymentDate = new Date(c.date_paid || c.created_at);
+            let isReinstated = false;
+
+            if (!isNaN(lastActivityDate.getTime()) && !isNaN(paymentDate.getTime())) {
+              // Calculate gap in months
+              let monthsDiff = (paymentDate.getFullYear() - lastActivityDate.getFullYear()) * 12;
+              monthsDiff += paymentDate.getMonth() - lastActivityDate.getMonth();
+
+              // If gap is >= 3 months, mark reinstated
+              if (monthsDiff >= 3) {
+                isReinstated = true;
+              }
+            }
+            // Update last activity date
+            lastActivityDate = paymentDate;
+            // --------------------------------------------------
+
             payments.push({
               date: c.date_paid || c.created_at,
               amount: amt,
@@ -179,7 +202,7 @@ export default function PublicSOAScreen() {
               running_balance: runningBal,
               installment_no: inst,
               collector_name: cName,
-              is_reinstatement: c.is_reinstatement
+              is_reinstatement: isReinstated || c.is_reinstatement // Prefer calc, fallback to DB
             });
           }
 
@@ -189,49 +212,77 @@ export default function PublicSOAScreen() {
           const installmentVal = monthlyDue > 0 ? totalPaid / monthlyDue : 0;
           const installment = installmentVal.toFixed(0);
 
-          // 5. Determine Status (Based on SQL Logic: Months Behind)
+
+          // 5. Determine Status (Last Payment Based)
           let status: MemberStatus = 'Active';
           let statusColor = '#22c55e'; // Green
 
+          // Start Date
           let startDateVal = member.plan_start_date ? new Date(member.plan_start_date).getTime() : null;
           if (!startDateVal) {
-            startDateVal = new Date(member.created_at || Date.now()).getTime();
+            if (member.date_joined) startDateVal = new Date(member.date_joined).getTime();
+            else startDateVal = new Date(member.created_at || Date.now()).getTime();
           }
           const startDate = new Date(startDateVal);
 
-          const currentDate = new Date();
+          // Find Last Regular Payment
+          const regularPayments = rawPayments.filter((p: any) => !p.is_membership_fee);
+          // rawPayments is usually ASC (based on SQL default or previous sort? query doesn't specify sort in JS, but usually date_paid).
+          // Let's assume ASC or sort it to be safe? 
+          // The fetch logic usually does .order('date_paid', { ascending: true })
+          // If not sure, I should sort.
+          regularPayments.sort((a, b) => new Date(a.date_paid).getTime() - new Date(b.date_paid).getTime());
 
-          let monthsSinceStart = (currentDate.getFullYear() - startDate.getFullYear()) * 12 + (currentDate.getMonth() - startDate.getMonth());
+          const lastPayment = regularPayments.length > 0 ? regularPayments[regularPayments.length - 1] : null;
 
-          const dayOfCurrent = currentDate.getDate();
-          const dayOfStart = startDate.getDate();
-          if (dayOfCurrent < dayOfStart) {
-            monthsSinceStart -= 1;
+          let paidUntilDate = new Date(startDate);
+
+          if (lastPayment) {
+            const lpDate = new Date(lastPayment.date_paid || lastPayment.created_at);
+            const lpAmount = Number(lastPayment.payment) || 0;
+            const mDue = Number(member.monthly_due) || 0;
+
+            if (mDue > 0) {
+              const monthsCovered = lpAmount / mDue;
+              const wholeMonths = Math.floor(monthsCovered);
+              const fraction = monthsCovered - wholeMonths;
+
+              paidUntilDate = new Date(lpDate);
+              paidUntilDate.setMonth(paidUntilDate.getMonth() + wholeMonths);
+              paidUntilDate.setDate(paidUntilDate.getDate() + Math.round(fraction * 30));
+            } else {
+              paidUntilDate = new Date();
+            }
           }
 
-          monthsSinceStart = Math.max(0, monthsSinceStart);
+          // Calculate Months Behind
+          const now = new Date();
+          let monthsBehind = (now.getFullYear() - paidUntilDate.getFullYear()) * 12 +
+            (now.getMonth() - paidUntilDate.getMonth());
 
-          const monthsPaid = rawPayments.length;
-          const monthsBehind = Math.max(0, monthsSinceStart - monthsPaid);
+          if (now.getDate() < paidUntilDate.getDate()) {
+            monthsBehind--;
+          }
+          monthsBehind = Math.max(0, monthsBehind);
 
           if (balance <= 0) {
             status = 'Completed';
             statusColor = '#22c55e';
           } else {
-            // Warning: >= 1 AND < 2
-            if (monthsBehind >= 1 && monthsBehind < 2) {
-              status = 'Warning';
-              statusColor = '#eab308'; // Yellow
+            // Lapsed: > 3
+            if (monthsBehind > 3) {
+              status = 'Lapsed';
+              statusColor = '#ef4444'; // Red
             }
-            // Lapsable (At Risk): >= 2 AND < 3
-            else if (monthsBehind >= 2 && monthsBehind < 3) {
+            // Lapsable (At Risk): >= 2
+            else if (monthsBehind >= 2) {
               status = 'Lapsable';
               statusColor = '#f97316'; // Orange
             }
-            // Lapsed: >= 3
-            else if (monthsBehind >= 3) {
-              status = 'Lapsed';
-              statusColor = '#ef4444'; // Red
+            // Warning: >= 1
+            else if (monthsBehind >= 1) {
+              status = 'Warning';
+              statusColor = '#eab308'; // Yellow
             }
             // Otherwise Active (< 1)
             else {
@@ -252,6 +303,11 @@ export default function PublicSOAScreen() {
             amountDueVal = monthlyDue + 100;
           }
 
+          // 7. Calculate Contestability Period
+          const joinedDateVal = member.plan_start_date || member.date_joined || member.created_at;
+          const contestabilityMonths = calculateContestability(joinedDateVal, rawPayments);
+          const inceptionDateStr = datePH(joinedDateVal);
+
           if (alive) {
             setData({
               member_id: member.id,
@@ -270,7 +326,9 @@ export default function PublicSOAScreen() {
               payments, // ASC order
               status,
               statusColor,
-              amount_due_calculated: amountDueVal
+              amount_due_calculated: amountDueVal,
+              contestability_period: contestabilityMonths,
+              inception_date: inceptionDateStr
             });
           }
 
@@ -499,6 +557,11 @@ export default function PublicSOAScreen() {
                 <Text style={styles.metaLabel}>Sales Executive:</Text>
                 <Text style={styles.metaValue}>{data?.agent_name || '—'}</Text>
               </View>
+              {/* Inception Date */}
+              <View style={styles.metaRow}>
+                <Text style={styles.metaLabel}>Date of Inception:</Text>
+                <Text style={styles.metaValue}>{data?.inception_date || '—'}</Text>
+              </View>
               {/* Member Status */}
               <View style={styles.metaRow}>
                 <Text style={styles.metaLabel}>Status:</Text>
@@ -509,6 +572,14 @@ export default function PublicSOAScreen() {
                   </Text>
                 </View>
               </View>
+              {/* Contestability Period */}
+              <View style={styles.metaRow}>
+                <Text style={styles.metaLabel}>Contestability:</Text>
+                <Text style={styles.metaValue}>
+                  {data?.contestability_period >= 12 ? '12 Months (Max)' : `${data?.contestability_period} Month${data?.contestability_period === 1 ? '' : 's'}`}
+                </Text>
+              </View>
+
               {data?.status === 'Lapsed' && (
                 <View style={styles.warningBox}>
                   <Text style={styles.warningText}>⚠ Reinstate this member to be active.</Text>

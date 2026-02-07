@@ -13,6 +13,7 @@ import {
   Dimensions,
   KeyboardAvoidingView,
   ScrollView,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -71,16 +72,48 @@ export default function Login() {
 
     setLoading(true);
     try {
-      // A) Edge Function Login
-      const raw = await usernameLogin(u, pw);
-      const res = raw as UsernameLoginResult;
+      let res: UsernameLoginResult;
 
-      if (!res?.ok) {
-        throw new Error(res?.error || "Login failed.");
+      // 🔍 CHECK: Is this an email?
+      const isEmail = u.includes("@") && u.includes(".");
+
+      if (isEmail) {
+        // A) Email Login (Standard Supabase)
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: u,
+          password: pw,
+        });
+
+        if (error) throw error;
+        if (!data.session) throw new Error("No session created.");
+
+        // Construct a "fake" result to match the expected format
+        res = {
+          ok: true,
+          access_token: data.session.access_token,
+          refresh_token: data.session.refresh_token,
+          user: {
+            user_id: data.user.id,
+            username: data.user.user_metadata?.username || u, // Fallback
+            role: data.user.user_metadata?.role || "agent",
+            agent_id: data.user.user_metadata?.agent_id,
+          },
+        };
+
+      } else {
+        // B) Username Login (Edge Function)
+        const raw = await usernameLogin(u, pw);
+        res = raw as UsernameLoginResult;
+
+        if (!res?.ok) {
+          throw new Error(res?.error || "Login failed.");
+        }
       }
 
-      // B) Supabase Session
-      if (res.access_token && res.refresh_token) {
+      // C) Supabase Session (Only needed if username login, but good measure)
+      // If we used signInWithPassword, session is already set automatically by Supabase client.
+      // If we used usernameLogin, we need to set it manually.
+      if (!isEmail && res.access_token && res.refresh_token) {
         const { error: sessErr } = await supabase.auth.setSession({
           access_token: res.access_token,
           refresh_token: res.refresh_token,
@@ -88,7 +121,7 @@ export default function Login() {
         if (sessErr) throw new Error(`Session error: ${sessErr.message}`);
       }
 
-      // C) Local Persistence (User Metadata)
+      // D) Local Persistence (User Metadata)
       try {
         const userPayload = res.user ?? ({
           user_id: res.user_id ?? "",
@@ -102,12 +135,12 @@ export default function Login() {
         }
       } catch { }
 
-      // D) Web Event
+      // E) Web Event
       if (Platform.OS === 'web' && typeof window !== "undefined") {
         window.dispatchEvent(new Event("auth:changed"));
       }
 
-      // E) Fetch & Sync Profile
+      // F) Fetch & Sync Profile
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (user?.id) {
@@ -124,9 +157,16 @@ export default function Login() {
         }
       } catch (e) { }
 
-      // F) Navigate
+      // G) Navigate
       const role = (res.user?.role ?? res.role ?? "agent").toString().toLowerCase();
-      router.replace(role === "admin" ? ADMIN_HOME : AGENT_HOME);
+
+      // Fix: Handle admin redirect safe fallback
+      if (role === "admin") {
+        router.replace("/login"); // As decided in previous task, admin stays at login/desktop
+        Alert.alert("Admin Access", "Please use the Desktop App for Admin access.");
+      } else {
+        router.replace(AGENT_HOME);
+      }
 
     } catch (e: any) {
       const msg = e?.message?.toLowerCase();
@@ -216,6 +256,11 @@ export default function Login() {
                       </TouchableOpacity>
                     </View>
                   </View>
+
+                  {/* ✨ NEW: Forgot Password Link */}
+                  <TouchableOpacity onPress={() => router.push("/forgot-password")} style={{ alignSelf: 'flex-end', marginTop: 8, marginBottom: 8 }}>
+                    <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12 }}>Forgot Password?</Text>
+                  </TouchableOpacity>
 
                   {/* Error Message */}
                   {err ? (

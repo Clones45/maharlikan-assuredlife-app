@@ -7,26 +7,28 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 async function inspectSchema() {
-    console.log("--- INSPECTING AGENT WALLETS TABLE ---");
+    console.log("--- INSPECTING TABLES ---");
 
-    const { data, error } = await supabase
-        .from("agents")
-        .select("*")
-        .limit(1);
+    const tables = ["agents", "users_profile", "agent_wallets"];
 
-    if (error) {
-        console.error("Error:", error);
-        return;
-    }
+    for (const table of tables) {
+        console.log(`\n--- TABLE: ${table} ---`);
+        const { data, error } = await supabase
+            .from(table)
+            .select("*")
+            .limit(1);
 
-    if (data.length === 0) {
-        console.log("Table is empty.");
-    } else {
-        console.log("Sample Row Keys (Columns):");
-        console.log(Object.keys(data[0]).join(", "));
+        if (error) {
+            console.error(`Error fetching ${table}:`, error);
+            continue;
+        }
 
-        console.log("\nSample Row Data:");
-        console.log(data[0]);
+        if (data.length === 0) {
+            console.log("Table is empty.");
+        } else {
+            console.log("Columns:", Object.keys(data[0]).join(", "));
+            console.log("Sample Data:", data[0]);
+        }
     }
 }
 

@@ -1,7 +1,3 @@
-// ✨ REDESIGNED: Memorial Services Theme - Tab Layout
-// 🎨 Visual changes: Deep green header/tabs, respectful icon updates
-// ⚙️ Logic: ALL authentication, routing, and notification logic UNCHANGED
-
 import { useEffect, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { Tabs, router, usePathname } from "expo-router";
@@ -11,6 +7,7 @@ import { memorialColors } from "../../constants/memorialTheme"; // ✨ NEW: Memo
 import { GlassTabBar } from "../../components/GlassTabBar";
 import { useToast } from "../../components/ToastProvider";
 import AgentHeader from "../../components/AgentHeader"; // ✨ NEW: Fixed Header
+import AddEmailModal from "../../components/AddEmailModal"; // ✨ NEW: Email Verification
 
 const PROFILE_TABLE = "users_profile";
 
@@ -21,6 +18,10 @@ export default function AgentTabsLayout() {
   const [userId, setUserId] = useState<string | null>(null);
   const { showToast } = useToast();
   const [agentId, setAgentId] = useState<number | null>(null);
+
+  // ✨ NEW: Email Verification State
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [currentEmail, setCurrentEmail] = useState("");
 
   // ⚙️ UNCHANGED: All authentication and role checking logic
   useEffect(() => {
@@ -35,6 +36,13 @@ export default function AgentTabsLayout() {
       }
 
       setUserId(data.session.user.id);
+      const email = data.session.user.email || "";
+      setCurrentEmail(email);
+
+      // 🔍 CHECK: If email is placeholder or missing, show modal immediately
+      if (!email || email.includes("@maharlikan.local")) {
+        setShowEmailModal(true);
+      }
 
       const { data: prof, error } = await supabase
         .from(PROFILE_TABLE)
@@ -72,6 +80,7 @@ export default function AgentTabsLayout() {
       if (!s) router.replace("/login");
     });
 
+    // ... (Notification logic unchanged) ... 
     // 🔔 REALTIME NOTIFICATIONS
     const channel = supabase
       .channel('agent-withdrawals')
@@ -101,7 +110,7 @@ export default function AgentTabsLayout() {
       sub?.subscription?.unsubscribe?.();
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, []); // Remove agentId dependency to avoid re-run loops, logic handles itself or uses ref if needed
 
   if (!ready) {
     return (
@@ -113,50 +122,64 @@ export default function AgentTabsLayout() {
   }
 
   return (
-    <Tabs
-      tabBar={(props) => <GlassTabBar {...props} />}
-      screenOptions={{
-        header: () => <AgentHeader userId={userId} agentId={agentId} />,
-        tabBarStyle: shouldHideTabs ? { display: "none" } : undefined,
-      }}
-    >
-      <Tabs.Screen
-        name="members"
-        options={{
-          title: "Members",
+    <>
+      <Tabs
+        tabBar={(props) => <GlassTabBar {...props} />}
+        screenOptions={{
+          header: () => <AgentHeader userId={userId} agentId={agentId} />,
+          tabBarStyle: shouldHideTabs ? { display: "none" } : undefined,
         }}
-      />
-      <Tabs.Screen
-        name="promotions"
-        options={{
-          title: "Promotions",
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: "Profile",
-        }}
-      />
+      >
+        <Tabs.Screen
+          name="members"
+          options={{
+            title: "Members",
+          }}
+        />
+        <Tabs.Screen
+          name="promotions"
+          options={{
+            title: "Promotions",
+          }}
+        />
+        <Tabs.Screen
+          name="profile"
+          options={{
+            title: "Profile",
+          }}
+        />
 
-      <Tabs.Screen
-        name="commission"
-        options={{
-          title: "Commission",
+        <Tabs.Screen
+          name="commission"
+          options={{
+            title: "Commission",
+          }}
+        />
+
+        <Tabs.Screen
+          name="AddMemberScreen"
+          options={{
+            title: "Add Member",
+          }}
+        />
+
+        {/* ⚙️ UNCHANGED: Hidden internal routes */}
+        <Tabs.Screen name="index" options={{ href: null }} />
+        <Tabs.Screen name="member/[id]" options={{ href: null }} />
+        <Tabs.Screen name="member/soa" options={{ href: null }} />
+        <Tabs.Screen name="add-recruit" options={{ href: null }} />
+      </Tabs>
+
+      {/* ✨ Email Verification Modal */}
+      <AddEmailModal
+        visible={showEmailModal}
+        currentEmail={currentEmail}
+        onSuccess={(newEmail) => {
+          setCurrentEmail(newEmail);
+          setShowEmailModal(false);
+          showToast('success', 'Email Verified', 'Your personal email has been securely linked.');
         }}
       />
-
-      <Tabs.Screen
-        name="AddMemberScreen"
-        options={{
-          title: "Add Member",
-        }}
-      />
-
-      {/* ⚙️ UNCHANGED: Hidden internal routes */}
-      <Tabs.Screen name="index" options={{ href: null }} />
-      <Tabs.Screen name="member/[id]" options={{ href: null }} />
-      <Tabs.Screen name="member/soa" options={{ href: null }} />
-    </Tabs>
+    </>
   );
 }
