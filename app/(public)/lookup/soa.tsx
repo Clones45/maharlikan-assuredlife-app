@@ -142,13 +142,28 @@ export default function PublicSOAScreen() {
           // 3. Fetch Collections (Source of Truth)
           const { data: collections, error: cErr } = await supabase
             .from('collections')
-            .select('date_paid, payment, plan_type, or_no, payment_for, created_at, collector_id, agent_id, is_reinstatement')
+            .select('date_paid, payment, plan_type, or_no, payment_for, created_at, collector_id, agent_id, is_reinstatement, is_membership_fee')
             .eq('member_id', memberId)
             .order('date_paid', { ascending: true });
 
           if (cErr) throw cErr;
 
           const rawPayments = collections || [];
+
+          // Sort: Membership first, then by Date
+          rawPayments.sort((a, b) => {
+            const payForA = (a.payment_for || '').toLowerCase();
+            const isMemA = a.is_membership_fee === true || payForA.includes('membership');
+
+            const payForB = (b.payment_for || '').toLowerCase();
+            const isMemB = b.is_membership_fee === true || payForB.includes('membership');
+
+            if (isMemA && !isMemB) return -1;
+            if (!isMemA && isMemB) return 1;
+
+            return new Date(a.date_paid || 0).getTime() - new Date(b.date_paid || 0).getTime();
+          });
+
           const payments: SoaTxn[] = [];
 
           const contracted = Number(member.contracted_price) || 0;
@@ -160,9 +175,16 @@ export default function PublicSOAScreen() {
 
           for (const c of rawPayments) {
             const amt = Number(c.payment) || 0;
-            cumulativePaid += amt;
+            const payFor = (c.payment_for || '').toLowerCase();
+            const isMembership = c.is_membership_fee === true || payFor.includes('membership');
+
+            // Only add to cumulativePaid if it's NOT a membership fee
+            if (!isMembership) {
+              cumulativePaid += amt;
+            }
 
             // Calculate Running Balance
+            // Balance only decreases if it's NOT membership (already handled by cumulativePaid check above? No, cumulativePaid is running total)
             const runningBal = Math.max(0, contracted - cumulativePaid);
 
             // Calculate Installment Count
@@ -199,8 +221,8 @@ export default function PublicSOAScreen() {
               plan_type: c.plan_type,
               or_no: c.or_no,
               payment_for: c.payment_for,
-              running_balance: runningBal,
-              installment_no: inst,
+              running_balance: runningBal, // This uses the cumulativePaid which already excludes membership
+              installment_no: isMembership ? 0 : inst, // 0 or -1 to indicate special handling? 0 is fine if we render it conditionally.
               collector_name: cName,
               is_reinstatement: isReinstated || c.is_reinstatement // Prefer calc, fallback to DB
             });
@@ -670,7 +692,9 @@ export default function PublicSOAScreen() {
                           </View>
                         )}
                       </View>
-                      <Text style={[styles.tdCenter, { flex: 1, minWidth: 100 }]}>{item.installment_no}</Text>
+                      <Text style={[styles.tdCenter, { flex: 1, minWidth: 100 }]}>
+                        {(item.payment_for || '').toLowerCase().includes('membership') ? '-' : item.installment_no}
+                      </Text>
                       <Text style={[styles.tdPrice, { flex: 1.3, minWidth: 130, color: memorialColors.textSecondary }]}>{peso(item.running_balance)}</Text>
                       <Text style={[styles.td, { flex: 2, minWidth: 200, paddingLeft: 16, fontSize: 11 }]} numberOfLines={1}>{item.collector_name}</Text>
                     </View>

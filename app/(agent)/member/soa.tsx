@@ -144,6 +144,21 @@ export default function SOAScreen() {
           if (cErr) throw cErr;
 
           const rawPayments = (collections || []) as any[];
+
+          // Sort: Membership first, then by Date
+          rawPayments.sort((a, b) => {
+            const payForA = (a.payment_for || '').toLowerCase();
+            const isMemA = a.is_membership_fee === true || payForA.includes('membership');
+
+            const payForB = (b.payment_for || '').toLowerCase();
+            const isMemB = b.is_membership_fee === true || payForB.includes('membership');
+
+            if (isMemA && !isMemB) return -1;
+            if (!isMemA && isMemB) return 1;
+
+            return new Date(a.date_paid || 0).getTime() - new Date(b.date_paid || 0).getTime();
+          });
+
           const payments: SoaTxn[] = [];
 
           const contracted = Number(member.contracted_price) || 0;
@@ -154,7 +169,8 @@ export default function SOAScreen() {
           let lastActivityDate = new Date(member.plan_start_date || member.created_at);
 
           for (const c of rawPayments) {
-            const isMembership = c.is_membership_fee === true;
+            const payFor = (c.payment_for || '').toLowerCase();
+            const isMembership = c.is_membership_fee === true || payFor.includes('membership');
             const amt = Number(c.payment) || 0;
 
             // Only add to cumulativePaid if it's NOT a membership fee
@@ -167,10 +183,7 @@ export default function SOAScreen() {
 
             // Calculate Installment Count (Only for regular payments)
             let inst = 0;
-            if (monthlyDue > 0 && !isMembership) {
-              inst = Math.floor(cumulativePaid / monthlyDue);
-            } else if (monthlyDue > 0) {
-              // For membership fees, we just show the cumulative installment up to this point
+            if (monthlyDue > 0) {
               inst = Math.floor(cumulativePaid / monthlyDue);
             }
 
@@ -203,7 +216,7 @@ export default function SOAScreen() {
               or_no: c.or_no,
               payment_for: c.payment_for,
               running_balance: runningBal,
-              installment_no: inst,
+              installment_no: isMembership ? 0 : inst,
               collector_name: cName,
               is_reinstatement: isReinstated || c.is_reinstatement
             });
@@ -655,7 +668,9 @@ export default function SOAScreen() {
                           </View>
                         )}
                       </View>
-                      <Text style={[styles.tdCenter, { flex: 1, minWidth: 100 }]}>{item.installment_no}</Text>
+                      <Text style={[styles.tdCenter, { flex: 1, minWidth: 100 }]}>
+                        {(item.payment_for || '').toLowerCase().includes('membership') ? '-' : item.installment_no}
+                      </Text>
                       <Text style={[styles.tdPrice, { flex: 1.3, minWidth: 130, color: memorialColors.textSecondary }]}>{peso(item.running_balance)}</Text>
                       <Text style={[styles.td, { flex: 2, minWidth: 200, paddingLeft: 16, fontSize: 11 }]} numberOfLines={1}>{item.collector_name}</Text>
                     </View>
