@@ -21,6 +21,7 @@ import { memorialColors, memorialSpacing, memorialBorderRadius, memorialFonts, m
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { calculateContestability } from '../../../utils/contestability';
+import { calculateMemberStatus } from '../../../utils/statusHelper';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -51,6 +52,8 @@ type SoaData = {
   amount_due_calculated?: number;
   contestability_period: number;
   inception_date: string;
+  due_date_display: string;
+  grace_period_display: string;
 };
 
 
@@ -229,88 +232,13 @@ export default function SOAScreen() {
           const installment = installmentVal.toFixed(0);
 
 
-          // 5. Determine Status (Last Payment Based)
-          let status: MemberStatus = 'Active';
-          let statusColor = '#22c55e'; // Green
+          // 5. Determine Status - Grace Period Logic (Using Helper)
+          const { status, statusColor, graceDays: calculatedGrace } = calculateMemberStatus(member, rawPayments);
 
-          // Start Date
-          let startDateVal = member.plan_start_date ? new Date(member.plan_start_date).getTime() : null;
-          if (!startDateVal) {
-            if (member.date_joined) startDateVal = new Date(member.date_joined).getTime();
-            else startDateVal = new Date(member.created_at || Date.now()).getTime();
-          }
-          const startDate = new Date(startDateVal);
-
-          // Find Last Regular Payment
-          const regularPayments = rawPayments.filter(p => p.is_membership_fee !== true);
-          // rawPayments is ASC, so last item is latest
-          const lastPayment = regularPayments.length > 0 ? regularPayments[regularPayments.length - 1] : null;
-
-          let paidUntilDate = new Date(startDate);
-
-          if (lastPayment) {
-            const lpDate = new Date(lastPayment.date_paid || lastPayment.created_at);
-            const lpAmount = Number(lastPayment.payment) || 0;
-            // If monthly due is 0, they are never behind? well, handle 0
-            const mDue = Number(member.monthly_due) || 0;
-
-            if (mDue > 0) {
-              const monthsCovered = lpAmount / mDue;
-              const wholeMonths = Math.floor(monthsCovered);
-              const fraction = monthsCovered - wholeMonths;
-
-              paidUntilDate = new Date(lpDate);
-              paidUntilDate.setMonth(paidUntilDate.getMonth() + wholeMonths);
-              // Approximate fraction
-              paidUntilDate.setDate(paidUntilDate.getDate() + Math.round(fraction * 30));
-            } else {
-              // No due = paid until infinity? Or start date + years? 
-              // Assert paid until current date so 0 behind.
-              paidUntilDate = new Date();
-            }
-          }
-
-          // Calculate Months Behind
-          const now = new Date();
-          let monthsBehind = (now.getFullYear() - paidUntilDate.getFullYear()) * 12 +
-            (now.getMonth() - paidUntilDate.getMonth());
-
-          if (now.getDate() < paidUntilDate.getDate()) {
-            monthsBehind--;
-          }
-          monthsBehind = Math.max(0, monthsBehind);
-
-          if (balance <= 0) {
-            status = 'Completed';
-            statusColor = '#22c55e';
-          } else {
-            // Lapsed: > 3
-            if (monthsBehind > 3) {
-              status = 'Lapsed';
-              statusColor = '#ef4444'; // Red
-            }
-            // Lapsable (At Risk): >= 2
-            else if (monthsBehind >= 2) {
-              status = 'Lapsable';
-              statusColor = '#f97316'; // Orange
-            }
-            // Warning: >= 1
-            else if (monthsBehind >= 1) {
-              status = 'Warning';
-              statusColor = '#eab308'; // Yellow
-            }
-            // Otherwise Active (< 1)
-            else {
-              status = 'Active';
-              statusColor = '#22c55e'; // Green
-            }
-          }
+          // Legacy variables for display
+          const graceDays = calculatedGrace;
 
           // 6. Amount Due Calculation
-          // Active: 0
-          // Warning: monthly_due
-          // Lapsable: monthly_due * 2
-          // Lapsed: monthly_due + 100
           let amountDueVal = 0;
           if (status === 'Active' || status === 'Completed') {
             amountDueVal = 0;
@@ -324,8 +252,39 @@ export default function SOAScreen() {
 
           // 7. Calculate Contestability & Inception Date
           const inceptionDateRaw = member.plan_start_date || member.date_joined || member.created_at;
-          const contestabilityMonths = calculateContestability(inceptionDateRaw, rawPayments);
+          const contestabilityMonths = calculateContestability(inceptionDateRaw, rawPayments, status);
           const inceptionDateStr = datePH(inceptionDateRaw);
+
+          // 8. Due Date Calculation 
+          let effectiveStartDateForDue = new Date(inceptionDateRaw);
+          let lastActivityDateForDue = new Date(inceptionDateRaw);
+
+          const sortedForDue = [...rawPayments].sort((a, b) => new Date(a.date_paid).getTime() - new Date(b.date_paid).getTime());
+
+          for (const c of sortedForDue) {
+            const pDate = new Date(c.date_paid);
+            if (isNaN(pDate.getTime())) continue;
+
+            let mDiff = (pDate.getFullYear() - lastActivityDateForDue.getFullYear()) * 12;
+            mDiff += pDate.getMonth() - lastActivityDateForDue.getMonth();
+
+            if (mDiff >= 3) {
+              effectiveStartDateForDue = pDate;
+            }
+            lastActivityDateForDue = pDate;
+          }
+
+          const dueday = effectiveStartDateForDue.getDate();
+          const suffix = (d: number) => {
+            if (d > 3 && d < 21) return 'th';
+            switch (d % 10) {
+              case 1: return "st";
+              case 2: return "nd";
+              case 3: return "rd";
+              default: return "th";
+            }
+          };
+          const dueDateDisplay = `Every ${dueday}${suffix(dueday)} of the month`;
 
           if (alive) {
             setData({
@@ -347,7 +306,9 @@ export default function SOAScreen() {
               statusColor,
               amount_due_calculated: amountDueVal,
               contestability_period: contestabilityMonths,
-              inception_date: inceptionDateStr
+              inception_date: inceptionDateStr,
+              due_date_display: dueDateDisplay,
+              grace_period_display: graceDays > 0 ? `${graceDays} Days` : '0 Days'
             });
           }
 
@@ -568,6 +529,19 @@ export default function SOAScreen() {
               <View style={styles.metaRow}>
                 <Text style={styles.metaLabel}>Date of Inception:</Text>
                 <Text style={styles.metaValue}>{data?.inception_date || '—'}</Text>
+              </View>
+              {/* Due Date */}
+              <View style={styles.metaRow}>
+                <Text style={styles.metaLabel}>Due Date:</Text>
+                <Text style={styles.metaValue}>{data?.due_date_display || '—'}</Text>
+              </View>
+
+              {/* Grace Period */}
+              <View style={styles.metaRow}>
+                <Text style={styles.metaLabel}>Grace Period:</Text>
+                <Text style={[styles.metaValue, { color: data?.statusColor }]}>
+                  {data?.grace_period_display || '—'}
+                </Text>
               </View>
               <View style={styles.metaRow}>
                 <Text style={styles.metaLabel}>Contestability:</Text>

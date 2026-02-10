@@ -19,6 +19,8 @@ import BackgroundLogo from "../../components/BackgroundLogo";
 import { memorialColors, memorialSpacing, memorialBorderRadius, memorialFonts, memorialShadows } from "../../constants/memorialTheme";
 import { useToast } from "../../components/ToastProvider";
 import { s } from "../../utils/responsive";
+import LockedView from "../../components/LockedView";
+import { AgentVerificationContext } from "./_layout";
 
 // ========================================
 // 🔵 TYPE DEFINITIONS
@@ -121,6 +123,7 @@ export default function AgentCommissions() {
   const [showCollections, setShowCollections] = useState<boolean>(true);
   const [customAmount, setCustomAmount] = useState<string>("");
   const { showToast } = useToast();
+  const isVerified = React.useContext(AgentVerificationContext);
 
   // ========================================
   // 🔵 INITIAL LOAD
@@ -560,6 +563,10 @@ export default function AgentCommissions() {
   // ========================================
   // UI
   // ========================================
+  if (!isVerified) {
+    return <LockedView />;
+  }
+
   if (isInitializing)
     return (
       <BackgroundLogo>

@@ -125,7 +125,7 @@ export default function AddEmailModal({
                     <Text style={s.description}>
                         {step === "email"
                             ? "To secure your account, please associate a personal email address. You will use this for recovery and notifications."
-                            : `We sent a verification code to ${email}. Please enter it below.`}
+                            : `We sent a verification code to ${email}. Please enter it below. if it is not in your primary, CHECK YOUR SPAM FOLDER`}
                     </Text>
 
                     {error && (

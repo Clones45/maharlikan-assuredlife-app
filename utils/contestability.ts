@@ -1,5 +1,6 @@
-export function calculateContestability(dateJoined: string | number | Date | null | undefined, collections: any[]): number {
+export function calculateContestability(dateJoined: string | number | Date | null | undefined, collections: any[], status?: string): number {
     if (!dateJoined) return 0;
+    if (status === 'Lapsed') return 0;
 
     // Sort collections by date (just to be safe, though usually ordered)
     const sorted = [...collections].sort((a, b) => {

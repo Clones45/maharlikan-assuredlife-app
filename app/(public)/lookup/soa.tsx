@@ -52,6 +52,8 @@ type SoaData = {
   amount_due_calculated?: number;
   contestability_period: number;
   inception_date: string;
+  due_date_display: string;
+  grace_period_display: string;
 };
 
 
@@ -235,81 +237,96 @@ export default function PublicSOAScreen() {
           const installment = installmentVal.toFixed(0);
 
 
-          // 5. Determine Status (Last Payment Based)
+          // 5. Determine Status - Grace Period Logic
           let status: MemberStatus = 'Active';
           let statusColor = '#22c55e'; // Green
 
-          // Start Date
-          let startDateVal = member.plan_start_date ? new Date(member.plan_start_date).getTime() : null;
-          if (!startDateVal) {
-            if (member.date_joined) startDateVal = new Date(member.date_joined).getTime();
-            else startDateVal = new Date(member.created_at || Date.now()).getTime();
+          // We need Effective Start Date FIRST
+          let effectiveStartDateForStatus = new Date(member.plan_start_date || member.date_joined || member.created_at);
+          let lastActivityDateForStatus = new Date(effectiveStartDateForStatus);
+
+          // Sort payments for logic
+          const sortedPayments = [...rawPayments].sort((a, b) => new Date(a.date_paid).getTime() - new Date(b.date_paid).getTime());
+
+          // Re-calculate effective start date (Reinstatement Logic)
+          for (const c of sortedPayments) {
+            const pDate = new Date(c.date_paid);
+            if (isNaN(pDate.getTime())) continue;
+            let mDiff = (pDate.getFullYear() - lastActivityDateForStatus.getFullYear()) * 12;
+            mDiff += pDate.getMonth() - lastActivityDateForStatus.getMonth();
+            if (mDiff >= 3) effectiveStartDateForStatus = pDate;
+            lastActivityDateForStatus = pDate;
           }
-          const startDate = new Date(startDateVal);
 
-          // Find Last Regular Payment
-          const regularPayments = rawPayments.filter((p: any) => !p.is_membership_fee);
-          // rawPayments is usually ASC (based on SQL default or previous sort? query doesn't specify sort in JS, but usually date_paid).
-          // Let's assume ASC or sort it to be safe? 
-          // The fetch logic usually does .order('date_paid', { ascending: true })
-          // If not sure, I should sort.
-          regularPayments.sort((a, b) => new Date(a.date_paid).getTime() - new Date(b.date_paid).getTime());
+          // Logic:
+          // Check if Reinstated: diff between effectiveStartDateForStatus and inceptionDate > 0
+          const effStartTime = effectiveStartDateForStatus.getTime();
+          const inceptionTime = new Date(member.date_joined).getTime();
+          const isReinstated = effStartTime > inceptionTime;
 
-          const lastPayment = regularPayments.length > 0 ? regularPayments[regularPayments.length - 1] : null;
+          const sortedForStatus = [...(collections || [])].sort((a, b) => new Date(a.date_paid).getTime() - new Date(b.date_paid).getTime());
 
-          let paidUntilDate = new Date(startDate);
+          let validSum = 0;
+          sortedForStatus.forEach(c => {
+            const pDate = new Date(c.date_paid).getTime();
+            let include = false;
 
-          if (lastPayment) {
-            const lpDate = new Date(lastPayment.date_paid || lastPayment.created_at);
-            const lpAmount = Number(lastPayment.payment) || 0;
-            const mDue = Number(member.monthly_due) || 0;
-
-            if (mDue > 0) {
-              const monthsCovered = lpAmount / mDue;
-              const wholeMonths = Math.floor(monthsCovered);
-              const fraction = monthsCovered - wholeMonths;
-
-              paidUntilDate = new Date(lpDate);
-              paidUntilDate.setMonth(paidUntilDate.getMonth() + wholeMonths);
-              paidUntilDate.setDate(paidUntilDate.getDate() + Math.round(fraction * 30));
+            if (isReinstated) {
+              if (pDate >= effStartTime) include = true;
             } else {
-              paidUntilDate = new Date();
+              include = true;
             }
+
+            if (include) {
+              const payFor = (c.payment_for || '').toLowerCase();
+              const isMembership = (c.is_membership_fee === true) || payFor.includes('membership');
+              if (!isMembership) {
+                validSum += Number(c.payment || 0);
+              }
+            }
+          });
+
+          // Calculate Paid Until
+          const mDue = Number(member.monthly_due) || 0;
+          let paidUntilDate = new Date(effectiveStartDateForStatus);
+
+          if (mDue > 0) {
+            const monthsCovered = validSum / mDue;
+            const wholeMonths = Math.floor(monthsCovered);
+            const fraction = monthsCovered - wholeMonths;
+            paidUntilDate.setMonth(paidUntilDate.getMonth() + wholeMonths);
+            paidUntilDate.setDate(paidUntilDate.getDate() + Math.round(fraction * 30));
+          } else {
+            // No due = paid forever?
+            paidUntilDate = new Date();
+            paidUntilDate.setFullYear(paidUntilDate.getFullYear() + 100);
           }
 
-          // Calculate Months Behind
+          // Calculate Grace Days
           const now = new Date();
-          let monthsBehind = (now.getFullYear() - paidUntilDate.getFullYear()) * 12 +
-            (now.getMonth() - paidUntilDate.getMonth());
+          now.setHours(0, 0, 0, 0);
+          const pd = new Date(paidUntilDate);
+          pd.setHours(0, 0, 0, 0);
 
-          if (now.getDate() < paidUntilDate.getDate()) {
-            monthsBehind--;
-          }
-          monthsBehind = Math.max(0, monthsBehind);
+          const diffMs = now.getTime() - pd.getTime();
+          const graceDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
 
           if (balance <= 0) {
             status = 'Completed';
             statusColor = '#22c55e';
           } else {
-            // Lapsed: > 3
-            if (monthsBehind > 3) {
-              status = 'Lapsed';
-              statusColor = '#ef4444'; // Red
-            }
-            // Lapsable (At Risk): >= 2
-            else if (monthsBehind >= 2) {
-              status = 'Lapsable';
-              statusColor = '#f97316'; // Orange
-            }
-            // Warning: >= 1
-            else if (monthsBehind >= 1) {
-              status = 'Warning';
-              statusColor = '#eab308'; // Yellow
-            }
-            // Otherwise Active (< 1)
-            else {
+            if (graceDays <= 0) {
               status = 'Active';
-              statusColor = '#22c55e'; // Green
+              statusColor = '#22c55e';
+            } else if (graceDays >= 1 && graceDays <= 29) {
+              status = 'Warning';
+              statusColor = '#eab308';
+            } else if (graceDays >= 30 && graceDays <= 59) {
+              status = 'Lapsable';
+              statusColor = '#f97316';
+            } else { // >= 60
+              status = 'Lapsed';
+              statusColor = '#ef4444';
             }
           }
 
@@ -327,8 +344,42 @@ export default function PublicSOAScreen() {
 
           // 7. Calculate Contestability Period
           const joinedDateVal = member.plan_start_date || member.date_joined || member.created_at;
-          const contestabilityMonths = calculateContestability(joinedDateVal, rawPayments);
+          const contestabilityMonths = calculateContestability(joinedDateVal, rawPayments, status);
           const inceptionDateStr = datePH(joinedDateVal);
+
+          // 8. Due Date Calculation (re-using reinstatement logic from calculateContestability or similar walk)
+          // We need the effective start date. 
+          // Similar logic to view_soa.js
+          let effectiveStartDateForDue = new Date(joinedDateVal);
+          let lastActivityDateForDue = new Date(joinedDateVal);
+
+          // Sort for safety if not already
+          const sortedForDue = [...rawPayments].sort((a, b) => new Date(a.date_paid).getTime() - new Date(b.date_paid).getTime());
+
+          for (const c of sortedForDue) {
+            const pDate = new Date(c.date_paid);
+            if (isNaN(pDate.getTime())) continue;
+
+            let mDiff = (pDate.getFullYear() - lastActivityDateForDue.getFullYear()) * 12;
+            mDiff += pDate.getMonth() - lastActivityDateForDue.getMonth();
+
+            if (mDiff >= 3) {
+              effectiveStartDateForDue = pDate;
+            }
+            lastActivityDateForDue = pDate;
+          }
+
+          const dueday = effectiveStartDateForDue.getDate();
+          const suffix = (d: number) => {
+            if (d > 3 && d < 21) return 'th';
+            switch (d % 10) {
+              case 1: return "st";
+              case 2: return "nd";
+              case 3: return "rd";
+              default: return "th";
+            }
+          };
+          const dueDateDisplay = `Every ${dueday}${suffix(dueday)} of the month`;
 
           if (alive) {
             setData({
@@ -350,7 +401,9 @@ export default function PublicSOAScreen() {
               statusColor,
               amount_due_calculated: amountDueVal,
               contestability_period: contestabilityMonths,
-              inception_date: inceptionDateStr
+              inception_date: inceptionDateStr,
+              due_date_display: dueDateDisplay,
+              grace_period_display: graceDays > 0 ? `${graceDays} Days` : '0 Days'
             });
           }
 
@@ -583,6 +636,19 @@ export default function PublicSOAScreen() {
               <View style={styles.metaRow}>
                 <Text style={styles.metaLabel}>Date of Inception:</Text>
                 <Text style={styles.metaValue}>{data?.inception_date || '—'}</Text>
+              </View>
+              {/* Due Date */}
+              <View style={styles.metaRow}>
+                <Text style={styles.metaLabel}>Due Date:</Text>
+                <Text style={styles.metaValue}>{data?.due_date_display || '—'}</Text>
+              </View>
+
+              {/* Grace Period */}
+              <View style={styles.metaRow}>
+                <Text style={styles.metaLabel}>Grace Period:</Text>
+                <Text style={[styles.metaValue, { color: data?.statusColor }]}>
+                  {data?.grace_period_display || '—'}
+                </Text>
               </View>
               {/* Member Status */}
               <View style={styles.metaRow}>

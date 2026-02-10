@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { ActivityIndicator, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, View, Text } from "react-native";
 import { Tabs, router, usePathname } from "expo-router";
 import { supabase, signOutUsername } from "../../lib/supabase";
 import { TabIcon } from "../../components/TabIcon";
@@ -8,8 +8,11 @@ import { GlassTabBar } from "../../components/GlassTabBar";
 import { useToast } from "../../components/ToastProvider";
 import AgentHeader from "../../components/AgentHeader"; // ✨ NEW: Fixed Header
 import AddEmailModal from "../../components/AddEmailModal"; // ✨ NEW: Email Verification
+import VerificationEntryModal from "../../components/VerificationEntryModal"; // ✨ NEW: Verification Modal
 
 const PROFILE_TABLE = "users_profile";
+
+export const AgentVerificationContext = React.createContext<boolean>(false);
 
 export default function AgentTabsLayout() {
   const pathname = usePathname();
@@ -22,6 +25,8 @@ export default function AgentTabsLayout() {
   // ✨ NEW: Email Verification State
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [currentEmail, setCurrentEmail] = useState("");
+  const [isVerified, setIsVerified] = useState<boolean>(false); // 🔒 SECURE DEFAULT: Locked until proven verified
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
 
   // ⚙️ UNCHANGED: All authentication and role checking logic
   useEffect(() => {
@@ -73,6 +78,45 @@ export default function AgentTabsLayout() {
         return;
       }
 
+      // 🔐 CHECK VERIFICATION STATUS
+      if (prof?.agent_id) {
+        console.log("[_layout] Checking verification for agent:", prof.agent_id);
+        const { data: agentData, error: agentErr } = await supabase
+          .from('agents')
+          .select('is_verified')
+          .eq('id', prof.agent_id)
+          .single();
+
+        if (agentErr) console.error("[_layout] Agent fetch error:", agentErr);
+        console.log("[_layout] Agent data:", agentData);
+
+        const verified = agentData?.is_verified ?? false; // Changed default to FALSE to see if it locks
+        console.log("[_layout] Resolved verified status:", verified);
+        setIsVerified(verified);
+
+        if (!verified) {
+          console.log("[_layout] Agent is restricted. Checking recruit count...");
+          // Check recruit count (Need 2 recruits + self = 3)
+          const { count, error: countErr } = await supabase
+            .from('members')
+            .select('*', { count: 'exact', head: true })
+            .eq('agent_id', prof.agent_id);
+
+          console.log("[_layout] Recruit count:", count, "Error:", countErr);
+
+          if ((count || 0) >= 2) {
+            setShowVerificationModal(true);
+            // Note: Admin will manually generate and send verification codes via admin panel
+          }
+
+          // Redirect to Add Member if strictly enforced (and not already there)
+          // We'll let the Tab logic handle hiding, but if they are on index, we might want to push them
+          if (pathname === '/(agent)' || pathname === '/(agent)/') {
+            router.replace('/(agent)/AddMemberScreen');
+          }
+        }
+      }
+
       setReady(true);
     })();
 
@@ -110,7 +154,10 @@ export default function AgentTabsLayout() {
       sub?.subscription?.unsubscribe?.();
       supabase.removeChannel(channel);
     };
-  }, []); // Remove agentId dependency to avoid re-run loops, logic handles itself or uses ref if needed
+  }, []);
+
+  // 🛡️ NAVIGATION GUARD: Removed in favor of Locked View component per new requirements
+  // Logic is now handled by individual screens using the Context
 
   if (!ready) {
     return (
@@ -122,44 +169,37 @@ export default function AgentTabsLayout() {
   }
 
   return (
-    <>
+    <AgentVerificationContext.Provider value={isVerified}>
       <Tabs
         tabBar={(props) => <GlassTabBar {...props} />}
         screenOptions={{
           header: () => <AgentHeader userId={userId} agentId={agentId} />,
-          tabBarStyle: shouldHideTabs ? { display: "none" } : undefined,
+          // tabBarStyle: shouldHideTabs ? { display: "none" } : undefined, // Removed hiding logic
         }}
       >
         <Tabs.Screen
           name="members"
-          options={{
-            title: "Members",
-          }}
+          options={{ title: "Members" }}
         />
         <Tabs.Screen
           name="promotions"
-          options={{
-            title: "Promotions",
-          }}
+          options={{ title: "Promotions" }}
         />
         <Tabs.Screen
           name="profile"
-          options={{
-            title: "Profile",
-          }}
+          options={{ title: "Profile" }}
         />
 
         <Tabs.Screen
           name="commission"
-          options={{
-            title: "Commission",
-          }}
+          options={{ title: "Commission" }}
         />
 
         <Tabs.Screen
           name="AddMemberScreen"
           options={{
             title: "Add Member",
+            // Always accessible
           }}
         />
 
@@ -180,6 +220,18 @@ export default function AgentTabsLayout() {
           showToast('success', 'Email Verified', 'Your personal email has been securely linked.');
         }}
       />
-    </>
+
+      {/* 🔐 Agent Verification Modal */}
+      <VerificationEntryModal
+        visible={showVerificationModal}
+        agentId={agentId || 0}
+        onVerified={() => {
+          setShowVerificationModal(false);
+          setIsVerified(true);
+          showToast('success', 'Agent Verified', 'You now have full access to current features.');
+          router.replace('/(agent)');
+        }}
+      />
+    </AgentVerificationContext.Provider>
   );
 }

@@ -107,7 +107,7 @@ export default function VerifyPasswordModal({
                     <Text style={s.description}>
                         {step === "send"
                             ? "To change your password, we need to verify it's really you. We'll send a code to your email."
-                            : `Enter the code sent to ${email} to authorize the password change.`}
+                            : `Enter the code sent to ${email} to authorize the password change. if it is not in your primary, CHECK YOUR SPAM FOLDER`}
                     </Text>
 
                     {error && (

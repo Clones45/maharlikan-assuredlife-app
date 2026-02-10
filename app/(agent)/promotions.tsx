@@ -18,6 +18,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import BenefitsTab from "../../components/BenefitsTab";
 import { memorialColors, memorialSpacing, memorialBorderRadius, memorialFonts, memorialShadows } from "../../constants/memorialTheme";
 import { useFocusEffect } from "expo-router";
+import LockedView from "../../components/LockedView";
+import { AgentVerificationContext } from "./_layout";
 
 // Cutoff helper: selected month → 7th to next 7th
 function cutoffRange(year: number, month: number) {
@@ -466,6 +468,11 @@ export default function Promotions() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"tree" | "benefits" | "recruiter">("tree");
   const [rulesExpanded, setRulesExpanded] = useState(false); // 💎 NEW: Collapsible rules state
+  const isVerified = React.useContext(AgentVerificationContext);
+
+  if (!isVerified) {
+    return <LockedView />;
+  }
 
 
   // ⚙️ UNCHANGED: Agent ID retrieval logic

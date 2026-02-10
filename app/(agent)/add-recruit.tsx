@@ -49,8 +49,7 @@ export default function AddRecruitScreen() {
     const [birthDateObj, setBirthDateObj] = useState<Date | null>(null);
     const [showBirthPicker, setShowBirthPicker] = useState(false);
 
-    // Access Code
-    const [accessCode, setAccessCode] = useState("");
+
 
 
     const [successFlash, setSuccessFlash] = useState(false);
@@ -67,7 +66,7 @@ export default function AddRecruitScreen() {
         setAddress("");
         setBirthDate("");
         setBirthDateObj(null);
-        setAccessCode("");
+
     };
 
 
@@ -141,41 +140,7 @@ export default function AddRecruitScreen() {
         setLoading(true);
 
         try {
-            // 0. Validate Access Code
-            if (!accessCode.trim()) {
-                Alert.alert("Error", "Access Code is required.");
-                return;
-            }
 
-            const code = accessCode.trim().toUpperCase();
-            if (!code.startsWith("A")) {
-                Alert.alert("Error", "For Agent Recruitment, the Access Code must start with 'A'.");
-                return;
-            }
-
-            console.log("[handleCreateRecruit] Validating Access Code:", code);
-            const { data: codeRow, error: codeErr } = await supabase
-                .from("access_codes")
-                .select("*")
-                .eq("code", code)
-                .maybeSingle();
-
-            if (codeErr) throw codeErr;
-
-            if (!codeRow) {
-                Alert.alert("Error", "Invalid Access Code.");
-                return;
-            }
-
-            if (codeRow.used) {
-                Alert.alert("Error", "This Access Code has already been used.");
-                return;
-            }
-
-            if (new Date(codeRow.expires_at) < new Date()) {
-                Alert.alert("Error", "This Access Code has expired.");
-                return;
-            }
 
 
             // 0. Check if username already exists in users_profile to avoid 500 error
@@ -250,8 +215,19 @@ export default function AddRecruitScreen() {
             }
             console.log("[handleCreateRecruit] Edge function response:", userData);
 
+            // Check if Edge Function returned an explicit error in the body
             if (userData?.error) throw new Error(userData.error);
-            if (!userData?.ok) throw new Error("Edge function failed to create user (ok=false).");
+
+            // Check for success
+            if (!userData?.ok) {
+                throw new Error("Edge function failed to create user (ok=false).");
+            }
+
+            // Log any warnings (e.g., profile creation issues)
+            if (userData?.warning) {
+                console.warn("[handleCreateRecruit] Warning:", userData.warning);
+            }
+
 
             // 3. Initialize Agent Wallet (Optional but good for consistency)
             console.log("[handleCreateRecruit] Initializing wallet for agent:", agentId);
@@ -268,19 +244,7 @@ export default function AddRecruitScreen() {
                 // We don't throw here to avoid failing the whole process if RLS blocks wallet creation
             }
 
-            // 4. Mark Access Code as Used
-            const { error: updErr } = await supabase
-                .from("access_codes")
-                .update({
-                    used: true,
-                    used_at: new Date().toISOString(),
-                })
-                .eq("id", codeRow.id);
 
-            if (updErr) {
-                console.error("Failed to mark access code as used:", updErr);
-                Alert.alert("Warning", "Agent created, but failed to mark code as used. Please report this.");
-            }
 
 
             resetForm();
@@ -319,16 +283,7 @@ export default function AddRecruitScreen() {
                 <View style={styles.card}>
                     <Text style={styles.sectionTitle}>Agent Details</Text>
 
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Access Code *</Text>
-                        <TextInput
-                            style={styles.input}
-                            value={accessCode}
-                            onChangeText={setAccessCode}
-                            placeholder="Enter 'A' Code (e.g. A-12345)"
-                            autoCapitalize="characters"
-                        />
-                    </View>
+
 
                     <View style={styles.inputGroup}>
                         <Text style={styles.label}>Last Name *</Text>

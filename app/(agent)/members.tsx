@@ -22,6 +22,8 @@ import { router } from "expo-router";
 import BackgroundLogo from "../../components/BackgroundLogo";
 import { memorialColors, memorialSpacing, memorialBorderRadius, memorialFonts, memorialShadows } from "../../constants/memorialTheme";
 import { s } from "../../utils/responsive";
+import LockedView from "../../components/LockedView";
+import { AgentVerificationContext } from "./_layout";
 
 // Enable LayoutAnimation on Android
 if (
@@ -71,6 +73,8 @@ type Member = {
   months_since_start?: number; // From RPC or computed if possible
   months_behind?: number;     // From RPC
   agent_id?: number;
+  plan_start_date?: string;
+  date_joined?: string;
 };
 
 type FilterType = "ALL" | "MS" | "DEFERRED" | "NON_DEFERRED" | "LAPSED" | "AT_RISK" | "WARNING" | "ACTIVE";
@@ -114,7 +118,7 @@ async function fetchMembers(filter: FilterType) {
     // Normal Fetch for ALL, MS, DEFERRED, NON_DEFERRED
     const res = await supabase
       .from("members")
-      .select("id, first_name, last_name, middle_name, address, maf_no, plan_type, monthly_due, contracted_price, balance, agent_id")
+      .select("id, first_name, last_name, middle_name, address, maf_no, plan_type, monthly_due, contracted_price, balance, agent_id, plan_start_date, date_joined")
       .eq("agent_id", agentId)
       .order("last_name", { ascending: true })
       .limit(500);
@@ -180,7 +184,12 @@ async function fetchBeneficiaries(memberIds: number[]) {
 }
 
 export default function AgentMembers() {
+  const isVerified = React.useContext(AgentVerificationContext);
   const [searchQuery, setSearchQuery] = React.useState("");
+
+  if (!isVerified) {
+    return <LockedView />;
+  }
   const [activeFilter, setActiveFilter] = React.useState<FilterType>("ALL");
 
   // Beneficiaries State
@@ -240,56 +249,68 @@ export default function AgentMembers() {
     return result;
   }, [members, searchQuery]);
 
-  // STATUS BADGE LOGIC (Strict Desktop Parity)
+  // STATUS BADGE LOGIC (Updated to Day-Based Grace Period)
   function getStatus(member: Member) {
-    // Priority 1: Lapsed (> 3 months behind)
-    // SQL: months_behind > 3
-    if (activeFilter === "LAPSED" || (typeof member.months_behind === 'number' && member.months_behind > 3)) {
+    // We assume 'months_behind' now contains GRACE DAYS from the RPC.
+    let graceDays = 0;
+
+    if (typeof member.months_behind === 'number') {
+      graceDays = Math.round(member.months_behind);
+    } else {
+      // Calculate Approximation based on Balance if RPC data missing (e.g. ALL list)
+      const paidMonths = calculatePaidMonths(member);
+      const start = member.plan_start_date ? new Date(member.plan_start_date) : new Date(member.date_joined || new Date());
+
+      // Calculate Paid Through
+      const paidUntil = new Date(start);
+      // Add whole months
+      paidUntil.setMonth(paidUntil.getMonth() + Math.floor(paidMonths));
+      // Add fractional days (approx 30 days/month)
+      paidUntil.setDate(paidUntil.getDate() + Math.round((paidMonths % 1) * 30));
+
+      // Next Due = Paid Through + 1 Day
+      const nextDue = new Date(paidUntil);
+      nextDue.setDate(nextDue.getDate() + 1);
+
+      // Grace Days = Now - Next Due
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+      nextDue.setHours(0, 0, 0, 0);
+
+      if (now.getTime() > nextDue.getTime()) {
+        const diff = now.getTime() - nextDue.getTime();
+        graceDays = Math.ceil(diff / (1000 * 3600 * 24));
+      } else {
+        graceDays = 0;
+      }
+    }
+
+    // Priority 1: Lapsed (>= 61 days)
+    if (activeFilter === "LAPSED" || graceDays >= 61) {
       return { label: "LAPSED", color: "#ef4444", bg: "#fee2e2" };
     }
 
-    // Priority 2: At Risk (Lapsable) [2, 3)
-    // SQL: months_behind >= 2 AND < 3
-    if (activeFilter === "AT_RISK" || (typeof member.months_behind === 'number' && member.months_behind >= 2 && member.months_behind < 3)) {
-      return { label: "Lapsable", color: "#f97316", bg: "#ffedd5" };
+    // Priority 2: Lapsable (31 - 60 days)
+    if (activeFilter === "AT_RISK" || (graceDays >= 31 && graceDays <= 60)) {
+      return { label: "LAPSABLE", color: "#f97316", bg: "#ffedd5" };
     }
 
-    // Priority 3: Warning [1, 2)
-    // SQL: months_behind >= 1 AND < 2
-    // Note: Desktop view_members.js supports Warning filter.
-    // If we have data, we show it.
-    if ((typeof member.months_behind === 'number' && member.months_behind >= 1 && member.months_behind < 2)) {
+    // Priority 3: Warning (1 - 30 days)
+    if (activeFilter === "WARNING" || (graceDays >= 1 && graceDays <= 30)) {
       return { label: "WARNING", color: "#eab308", bg: "#fef9c3" };
     }
 
-    // Priority 4: Commissionable vs Non-Commissionable (Default fallback if Active)
-    // Or explicit Active
-    if (activeFilter === "ACTIVE") {
+    // Priority 4: Active (0 or less)
+    // If strict compliance:
+    if (activeFilter === "ACTIVE" || graceDays <= 0) {
       return { label: "ACTIVE", color: "#16a34a", bg: "#dcfce7" };
     }
 
-    if (typeof member.months_behind === 'number' && member.months_behind < 1) {
-      // It is Active. Detailed logic for commissionable can still apply as sub-label or color?
-      // User requested Active status.
-      // Let's stick to Green Active status if < 1, but maybe "Commissionable" is important?
-      // members.tsx original code returns Commissionable/Non-Commissionable.
-      // We can merge?
-      // "Active" usually implies up to date.
-      // Let's return COMMISSIONABLE/NON-COMMISSIONABLE as requested in original file?
-      // Wait, original file had that.
-      // User said "implement that in ... members.tsx". SQL has "Active" query.
-      // If I change to "Active", I lose commissionable info?
-      // Let's default to Commissionable/Non-Commissionable logic BUT if it's strictly < 1 month behind, it IS Active.
-      // Just use original logic for the "Good" state?
-      // Actually, let's keep Commissionable/Non as the "Active" state representation unless user wants "ACTIVE" text.
-      // view_members.js has "ACTIVE" badge.
-      // I will add "ACTIVE" badge logic.
-    }
-
-    // Fallback if no months_behind data or it is calculated as Active
+    // Fallback for Commissionable Logic (if user wants to keep it)
+    // If < 1 day (Active), it's Commissionable.
     const paid = calculatePaidMonths(member);
     if (paid <= 12) {
-      return { label: "COMMISSIONABLE", color: "#16a34a", bg: "#dcfce7" };
+      return { label: "ACTIVE", color: "#16a34a", bg: "#dcfce7" };
     } else {
       return { label: "NON COMMISSIONABLE", color: "#d97706", bg: "#fef9c3" };
     }

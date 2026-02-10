@@ -10,6 +10,7 @@ import { supabase } from "../../../lib/supabase";
 import BackButton from "../../../components/BackButton";
 import BackgroundLogo from "../../../components/BackgroundLogo";
 import { memorialColors, memorialSpacing, memorialBorderRadius, memorialFonts, memorialShadows } from "../../../constants/memorialTheme";
+import { calculateMemberStatus } from "../../../utils/statusHelper";
 
 // Enable animations
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -130,7 +131,7 @@ export default function AgentMemberDetail() {
     // Fetch Collections to Calculate Balance (Source of Truth)
     const { data: collections, error: cErr } = await supabase
       .from('collections')
-      .select('payment, is_membership_fee, date_paid, created_at')
+      .select('payment, is_membership_fee, date_paid, created_at, payment_for')
       .eq('member_id', memberId)
       .order('date_paid', { ascending: true });
 
@@ -148,73 +149,16 @@ export default function AgentMemberDetail() {
     let statusColor = '#22c55e'; // Green
 
     if (m) {
-      // DYNAMIC BALANCE CALCULATION
+      // DYNAMIC BALANCE CALCULATION & STATUS (Shared Logic)
+      const { status: s, statusColor: c, graceDays } = calculateMemberStatus(m, rawPayments);
+
+      status = s;
+      statusColor = c;
+
+      // Update balance in local object if needed for display (though helper recalculates valid payments, not balance)
       const contracted = Number(m.contracted_price) || 0;
       const calculatedBalance = Math.max(0, contracted - totalPaid);
-
-      // Override member balance with calculated one
       m.balance = calculatedBalance;
-
-      if (calculatedBalance <= 0) {
-        status = 'Completed';
-        statusColor = '#22c55e';
-      } else {
-        // Start Date
-        let startDateVal = m.plan_start_date ? new Date(m.plan_start_date).getTime() : null;
-        if (!startDateVal) {
-          if (m.date_joined) startDateVal = new Date(m.date_joined).getTime();
-          else startDateVal = new Date(m.created_at || Date.now()).getTime();
-        }
-        const startDate = new Date(startDateVal);
-
-        // Find Last Regular Payment
-        const regularPayments = (collections || []).filter((c: any) => !c.is_membership_fee);
-        const lastPayment = regularPayments.length > 0 ? regularPayments[regularPayments.length - 1] : null;
-
-        let paidUntilDate = new Date(startDate);
-
-        if (lastPayment) {
-          const lpDate = new Date(lastPayment.date_paid || lastPayment.created_at);
-          const lpAmount = Number(lastPayment.payment) || 0;
-          const mDue = Number(m.monthly_due) || 0;
-
-          if (mDue > 0) {
-            const monthsCovered = lpAmount / mDue;
-            const wholeMonths = Math.floor(monthsCovered);
-            const fraction = monthsCovered - wholeMonths;
-
-            paidUntilDate = new Date(lpDate);
-            paidUntilDate.setMonth(paidUntilDate.getMonth() + wholeMonths);
-            paidUntilDate.setDate(paidUntilDate.getDate() + Math.round(fraction * 30));
-          } else {
-            paidUntilDate = new Date();
-          }
-        }
-
-        // Calculate Months Behind
-        const now = new Date();
-        let monthsBehind = (now.getFullYear() - paidUntilDate.getFullYear()) * 12 +
-          (now.getMonth() - paidUntilDate.getMonth());
-
-        if (now.getDate() < paidUntilDate.getDate()) {
-          monthsBehind--;
-        }
-        monthsBehind = Math.max(0, monthsBehind);
-
-        if (monthsBehind > 3) {
-          status = 'Lapsed';
-          statusColor = '#ef4444';
-        } else if (monthsBehind >= 2) {
-          status = 'Lapsable';
-          statusColor = '#f97316';
-        } else if (monthsBehind >= 1) {
-          status = 'Warning';
-          statusColor = '#eab308';
-        } else {
-          status = 'Active';
-          statusColor = '#22c55e';
-        }
-      }
     }
 
     const mem = m ? { ...m, status, statusColor } : null;
