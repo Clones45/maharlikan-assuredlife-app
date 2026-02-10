@@ -95,14 +95,15 @@ export default function AgentTabsLayout() {
         setIsVerified(verified);
 
         if (!verified) {
-          console.log("[_layout] Agent is restricted. Checking recruit count...");
-          // Check recruit count (Need 2 recruits + self = 3)
+          console.log("[_layout] Agent is restricted. Checking membership payment count...");
+          // Check membership payment count (Need 2 membership payments)
           const { count, error: countErr } = await supabase
-            .from('members')
+            .from('collections')
             .select('*', { count: 'exact', head: true })
-            .eq('agent_id', prof.agent_id);
+            .eq('agent_id', prof.agent_id)
+            .eq('payment_for', 'membership');
 
-          console.log("[_layout] Recruit count:", count, "Error:", countErr);
+          console.log("[_layout] Membership payment count:", count, "Error:", countErr);
 
           if ((count || 0) >= 2) {
             setShowVerificationModal(true);
