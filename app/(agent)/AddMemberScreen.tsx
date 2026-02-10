@@ -20,6 +20,7 @@ import { Picker } from "@react-native-picker/picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../../lib/supabase";
 import { memorialColors, memorialSpacing, memorialBorderRadius, memorialFonts, memorialShadows } from "../../constants/memorialTheme";
+import MemberTypeSelection from "./MemberTypeSelection";
 
 const PROFILE_TABLE = "users_profile";
 
@@ -131,6 +132,11 @@ export default function AddMemberScreen() {
     },
   ]);
 
+  // ================= MEMBER TYPE & ADAPTED FIELDS =================
+  const [memberType, setMemberType] = useState<'new' | 'adapt' | null>(null);
+  const [adaptedMonths, setAdaptedMonths] = useState("");
+  const [adaptedAmount, setAdaptedAmount] = useState(0);
+
   const [saving, setSaving] = useState(false);
 
   // =====================================
@@ -236,10 +242,32 @@ export default function AddMemberScreen() {
       setCasketType(plan.casket_type);
       setContractedPrice(plan.contracted_price);
       setMonthlyDue(plan.monthly_due);
+
+      // Auto-calculate adapted amount if in adapt mode
+      if (memberType === 'adapt' && adaptedMonths) {
+        const months = parseInt(adaptedMonths);
+        if (!isNaN(months) && months > 0) {
+          setAdaptedAmount(plan.monthly_due * months);
+        }
+      }
     } else {
       setCasketType("");
       setContractedPrice(null);
       setMonthlyDue(null);
+      setAdaptedAmount(0);
+    }
+  };
+
+  // =====================================
+  // Handle adapted months change
+  // =====================================
+  const handleAdaptedMonthsChange = (value: string) => {
+    setAdaptedMonths(value);
+    const months = parseInt(value);
+    if (!isNaN(months) && months > 0 && monthlyDue) {
+      setAdaptedAmount(monthlyDue * months);
+    } else {
+      setAdaptedAmount(0);
     }
   };
 
@@ -317,14 +345,30 @@ export default function AddMemberScreen() {
   // Validation before Save
   // =====================================
   const validateBeforeSave = () => {
-    if (!accessCode.trim()) {
-      showStatus("error", "Access Code", "Access Code is required.");
-      return false;
+    // Access code validation (only for new members)
+    if (memberType === 'new') {
+      if (!accessCode.trim()) {
+        showStatus("error", "Access Code", "Access Code is required.");
+        return false;
+      }
+
+      if (accessCode.trim().toUpperCase().startsWith("A")) {
+        showStatus("error", "Invalid Code", "This code is for Agent Recruitment only.");
+        return false;
+      }
     }
 
-    if (accessCode.trim().toUpperCase().startsWith("A")) {
-      showStatus("error", "Invalid Code", "This code is for Agent Recruitment only.");
-      return false;
+    // Adapted months validation (only for adapted members)
+    if (memberType === 'adapt') {
+      if (!adaptedMonths.trim()) {
+        showStatus("error", "Adapted Months", "Number of adapted months is required.");
+        return false;
+      }
+      const months = parseInt(adaptedMonths);
+      if (isNaN(months) || months <= 0) {
+        showStatus("error", "Adapted Months", "Please enter a valid number of months.");
+        return false;
+      }
     }
 
     if (!mafNo.trim()) {
@@ -367,42 +411,49 @@ export default function AddMemberScreen() {
   };
 
   // =====================================
-  // Save Member (real code validation)
+  // Save Member (handles both new and adapted)
   // =====================================
   const saveMember = async () => {
     if (!validateBeforeSave()) return;
 
     setSaving(true);
-    const code = accessCode.trim().toUpperCase();
 
     try {
-      // 1️⃣ Re-check the access code in DB (fresh)
-      const { data: codeRow, error: codeErr } = await supabase
-        .from("access_codes")
-        .select("*")
-        .eq("code", code)
-        .maybeSingle();
+      let codeRow = null;
 
-      if (codeErr) throw codeErr;
+      // 1️⃣ Access code validation (only for new members)
+      if (memberType === 'new') {
+        const code = accessCode.trim().toUpperCase();
 
-      if (!codeRow) {
-        showStatus("error", "Invalid Code", "This access code does not exist.");
-        setSaving(false);
-        return;
-      }
+        const { data: fetchedCode, error: codeErr } = await supabase
+          .from("access_codes")
+          .select("*")
+          .eq("code", code)
+          .maybeSingle();
 
-      const now = new Date();
-      const expiry = new Date(codeRow.expires_at);
+        if (codeErr) throw codeErr;
 
-      if (codeRow.used) {
-        showStatus("error", "Code Used", "This access code has already been used.");
-        setSaving(false);
-        return;
-      }
-      if (expiry < now) {
-        showStatus("error", "Code Expired", "This access code has already expired.");
-        setSaving(false);
-        return;
+        if (!fetchedCode) {
+          showStatus("error", "Invalid Code", "This access code does not exist.");
+          setSaving(false);
+          return;
+        }
+
+        const now = new Date();
+        const expiry = new Date(fetchedCode.expires_at);
+
+        if (fetchedCode.used) {
+          showStatus("error", "Code Used", "This access code has already been used.");
+          setSaving(false);
+          return;
+        }
+        if (expiry < now) {
+          showStatus("error", "Code Expired", "This access code has already expired.");
+          setSaving(false);
+          return;
+        }
+
+        codeRow = fetchedCode;
       }
 
       // 2️⃣ Insert into members table
@@ -439,7 +490,11 @@ export default function AddMemberScreen() {
 
           agent_id: agentId,
           balance: contractedPrice ?? 0,
-          // date_joined, status, membership_paid, etc. use DB defaults
+
+          // Adapted member fields
+          is_adapted: memberType === 'adapt',
+          adapted_months: memberType === 'adapt' ? parseInt(adaptedMonths) : 0,
+          adapted_amount: memberType === 'adapt' ? adaptedAmount : 0,
         })
         .select()
         .single();
@@ -448,7 +503,7 @@ export default function AddMemberScreen() {
 
       const memberId = member.id as number;
 
-      // 3️⃣ Insert beneficiaries (duplicates allowed)
+      // 3️⃣ Insert beneficiaries
       const beneRows = beneficiaries
         .filter((b) => b.firstName.trim() || b.lastName.trim())
         .map((b) => ({
@@ -477,25 +532,78 @@ export default function AddMemberScreen() {
         }
       }
 
-      // 4️⃣ Mark access code as used
-      const { error: updErr } = await supabase
-        .from("access_codes")
-        .update({
-          used: true,
-          used_at: new Date().toISOString(),
-        })
-        .eq("id", codeRow.id);
+      // 4️⃣ For adapted members, create the adapted payment collection
+      if (memberType === 'adapt') {
+        const months = parseInt(adaptedMonths);
+        const monthsText = months === 1 ? '1 month' : `${months} months`;
 
-      if (updErr) {
-        console.error("Access code update error:", updErr);
-        showStatus(
-          "error",
-          "Warning",
-          "Member saved, but failed to update access code status."
-        );
+        const { error: collectionErr } = await supabase
+          .from("collections")
+          .insert({
+            member_id: memberId,
+            agent_id: agentId,
+            collector_id: agentId,
+            maf_no: mafNo,
+
+            payment: adaptedAmount,
+            payment_for: `adapted - ${monthsText}`,
+            date_paid: new Date().toISOString(),
+            collection_month: new Date().toISOString().substring(0, 7) + '-01',
+
+            // Demographics Snapshot
+            last_name: lastName.trim(),
+            first_name: firstName.trim(),
+            middle_name: middleName.trim() || null,
+            address: address.trim(),
+            plan_type: planType,
+
+            // Meta
+            or_no: '', // No OR number for adapted payments
+            is_membership_fee: false,
+            outright_mode: 'accrue',
+
+            // Commission flags - all false for adapted
+            deduct_now: false,
+            got_monthly_commission: false,
+            got_travel_allowance: false,
+            personally_collected: false,
+          });
+
+        if (collectionErr) {
+          console.error("Adapted payment collection error:", collectionErr);
+          showStatus(
+            "error",
+            "Warning",
+            "Member saved, but adapted payment failed to record."
+          );
+        }
       }
 
-      showStatus("success", "Success", "Member has been registered successfully.");
+      // 5️⃣ Mark access code as used (only for new members)
+      if (memberType === 'new' && codeRow) {
+        const { error: updErr } = await supabase
+          .from("access_codes")
+          .update({
+            used: true,
+            used_at: new Date().toISOString(),
+          })
+          .eq("id", codeRow.id);
+
+        if (updErr) {
+          console.error("Access code update error:", updErr);
+          showStatus(
+            "error",
+            "Warning",
+            "Member saved, but failed to update access code status."
+          );
+        }
+      }
+
+      const successMsg = memberType === 'adapt'
+        ? `Adapted member registered successfully with ${adaptedMonths} prepaid months (₱${adaptedAmount.toFixed(2)}).`
+        : "Member has been registered successfully.";
+
+      showStatus("success", "Success", successMsg);
       resetForm();
     } catch (err: any) {
       console.error("saveMember error:", err);
@@ -532,6 +640,10 @@ export default function AddMemberScreen() {
     setCasketType("");
     setContractedPrice(null);
     setMonthlyDue(null);
+    // DON'T reset memberType - keep user on same form type
+    // setMemberType(null);
+    setAdaptedMonths("");
+    setAdaptedAmount(0);
     setBeneficiaries([
       {
         firstName: "",
@@ -548,6 +660,12 @@ export default function AddMemberScreen() {
   // =====================================
   // UI
   // =====================================
+
+  // Show member type selection if not selected yet
+  if (memberType === null) {
+    return <MemberTypeSelection onSelectType={setMemberType} />;
+  }
+
   return (
     <ScrollView
       style={styles.container}
@@ -555,21 +673,51 @@ export default function AddMemberScreen() {
       keyboardShouldPersistTaps="handled"
     >
 
+      {/* Back button to return to member type selection */}
+      <TouchableOpacity
+        style={styles.backButton}
+        onPress={() => setMemberType(null)}
+      >
+        <Ionicons name="arrow-back" size={24} color={memorialColors.primary} />
+        <Text style={styles.backButtonText}>Change Member Type</Text>
+      </TouchableOpacity>
 
-      <Text style={styles.screenTitle}>Add Member (Using your CODE)</Text>
+      <Text style={styles.screenTitle}>
+        {memberType === 'new' ? 'Add New Member' : 'Adapt a Member'}
+      </Text>
 
-      {/* ACCESS CODE */}
+      {/* Access code for new members OR Adapted months for adapted members */}
       <View style={styles.card}>
-        <TextInput
-          style={styles.input}
-          placeholder="Enter Access Code"
-          placeholderTextColor={memorialColors.textSecondary}
-          value={accessCode}
-          onChangeText={setAccessCode}
-          autoCapitalize="characters"
-        />
-
-
+        {memberType === 'new' ? (
+          <>
+            <Text style={styles.label}>Access Code</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Enter Access Code"
+              placeholderTextColor={memorialColors.textSecondary}
+              value={accessCode}
+              onChangeText={setAccessCode}
+              autoCapitalize="characters"
+            />
+          </>
+        ) : (
+          <>
+            <Text style={styles.label}>Adapted Months</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Number of prepaid months"
+              placeholderTextColor={memorialColors.textSecondary}
+              value={adaptedMonths}
+              onChangeText={handleAdaptedMonthsChange}
+              keyboardType="numeric"
+            />
+            {adaptedAmount > 0 && (
+              <Text style={styles.adaptedAmountText}>
+                Adapted Amount: ₱{adaptedAmount.toFixed(2)}
+              </Text>
+            )}
+          </>
+        )}
       </View>
 
       {/* MEMBER INFO */}
@@ -1194,6 +1342,25 @@ const styles = StyleSheet.create({
     color: memorialColors.primary,
     fontWeight: memorialFonts.semibold,
     marginTop: memorialSpacing.xs,
+  },
+  backButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: memorialSpacing.md,
+    padding: memorialSpacing.sm,
+  },
+  backButtonText: {
+    marginLeft: memorialSpacing.sm,
+    fontSize: memorialFonts.md,
+    color: memorialColors.primary,
+    fontWeight: memorialFonts.semibold,
+  },
+  adaptedAmountText: {
+    fontSize: memorialFonts.md,
+    color: memorialColors.primary,
+    fontWeight: memorialFonts.semibold,
+    marginTop: memorialSpacing.sm,
+    textAlign: "center",
   },
   verifiedText: {
     marginTop: memorialSpacing.sm,

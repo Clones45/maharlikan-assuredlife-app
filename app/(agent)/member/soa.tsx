@@ -30,7 +30,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 type AnyNum = number | string | null | undefined;
 type AnyStr = string | null | undefined;
 
-type MemberStatus = 'Active' | 'Warning' | 'Lapsable' | 'Lapsed' | 'Completed';
+type MemberStatus = 'Active' | 'Warning' | 'Lapsable' | 'Lapsed' | 'Completed' | 'PENDING';
 
 type SoaData = {
   member_id: number;
@@ -308,7 +308,7 @@ export default function SOAScreen() {
               contestability_period: contestabilityMonths,
               inception_date: inceptionDateStr,
               due_date_display: dueDateDisplay,
-              grace_period_display: graceDays > 0 ? `${graceDays} Days` : '0 Days'
+              grace_period_display: status === 'PENDING' ? 'PENDING' : (graceDays > 0 ? `${graceDays} Days` : '0 Days')
             });
           }
 
@@ -333,7 +333,10 @@ export default function SOAScreen() {
       <tr>
         <td style="padding: 6px;">${datePH(r.date)}</td>
         <td style="padding: 6px; text-align: right;">${peso(r.amount)}</td>
-        <td style="padding: 6px; text-align: center;">${esc(r.or_no || '-')}</td>
+        <td style="padding: 6px; text-align: center;">${(r.payment_for || '').toLowerCase().includes('adapted')
+            ? ((r.payment_for || '').length > 7 ? (r.payment_for || '').toUpperCase() : 'ADAPTED')
+            : esc(r.or_no || '-')
+          }</td>
         <td style="padding: 6px; text-align: center;">${r.installment_no}</td>
         <td style="padding: 6px; text-align: right;">${peso(r.running_balance)}</td>
         <td style="padding: 6px;">${esc(r.collector_name)}</td>
@@ -546,7 +549,11 @@ export default function SOAScreen() {
               <View style={styles.metaRow}>
                 <Text style={styles.metaLabel}>Contestability:</Text>
                 <Text style={styles.metaValue}>
-                  {data?.contestability_period && data.contestability_period >= 12 ? '12 Months (Max)' : `${data?.contestability_period} Month${data?.contestability_period === 1 ? '' : 's'}`}
+                  {data?.contestability_period === -1
+                    ? 'PENDING'
+                    : data?.contestability_period && data.contestability_period >= 12
+                      ? '12 Months (Max)'
+                      : `${data?.contestability_period} Month${data?.contestability_period === 1 ? '' : 's'}`}
                 </Text>
               </View>
 
@@ -633,7 +640,11 @@ export default function SOAScreen() {
                   renderItem={({ item }) => (
                     <View style={[styles.trRow, { paddingHorizontal: 0, minWidth: 760, flex: 1 }]}>
                       <Text style={[styles.td, { flex: 1.1, minWidth: 110, paddingLeft: 12 }]}>{datePH(item.date)}</Text>
-                      <Text style={[styles.tdCenter, { flex: 1, minWidth: 100 }]}>{item.or_no || '—'}</Text>
+                      <Text style={[styles.tdCenter, { flex: 1, minWidth: 100 }]}>
+                        {(item.payment_for || '').toLowerCase().includes('adapted')
+                          ? ((item.payment_for || '').length > 7 ? (item.payment_for || '').toUpperCase() : 'ADAPTED')
+                          : (item.or_no || '—')}
+                      </Text>
                       <View style={{ flex: 1.2, minWidth: 120, alignItems: 'flex-end', paddingRight: 4 }}>
                         <Text style={[styles.tdPrice, { textAlign: 'right' }]}>{peso(item.amount)}</Text>
                         {item.is_reinstatement && (

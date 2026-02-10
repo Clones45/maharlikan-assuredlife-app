@@ -1,7 +1,7 @@
 
 // utils/statusHelper.ts
 
-export type MemberStatus = 'Active' | 'Warning' | 'Lapsable' | 'Lapsed' | 'Completed';
+export type MemberStatus = 'Active' | 'Warning' | 'Lapsable' | 'Lapsed' | 'Completed' | 'PENDING';
 
 export interface StatusResult {
     status: MemberStatus;
@@ -61,13 +61,19 @@ export function calculateMemberStatus(
 
     let validSum = 0;
     let totalPaid = 0; // For balance calc separate from status
+    let hasRegularPayment = false; // Track if any regular payment exists
 
     sorted.forEach(c => {
         const pDate = new Date(c.date_paid).getTime();
         const payFor = (c.payment_for || '').toLowerCase();
         const isMembership = (c.is_membership_fee === true) || payFor.includes('membership');
+        const isAdapted = payFor.includes('adapted');
 
-        if (!isMembership) totalPaid += Number(c.payment || 0);
+        // Only count regular payments for totalPaid (exclude membership AND adapted)
+        if (!isMembership && !isAdapted) {
+            totalPaid += Number(c.payment || 0);
+            hasRegularPayment = true;
+        }
 
         let include = false;
         if (isReinstated) {
@@ -76,10 +82,21 @@ export function calculateMemberStatus(
             include = true;
         }
 
-        if (include && !isMembership) {
+        if (include && !isMembership && !isAdapted) {
             validSum += Number(c.payment || 0);
         }
     });
+
+    // 🔥 NEW: If no regular payments exist, status is PENDING
+    if (!hasRegularPayment) {
+        return {
+            status: 'PENDING' as MemberStatus,
+            statusColor: '#6b7280', // Gray
+            graceDays: 0,
+            paidUntilDate: effectiveStartDate,
+            effectiveStartDate
+        };
+    }
 
     // 3. Calculate Paid Through Date
     // Formula: Inception (Effective Start) + (Total Valid Installments * 1 Month)

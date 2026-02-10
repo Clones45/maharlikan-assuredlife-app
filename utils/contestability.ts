@@ -1,5 +1,9 @@
 export function calculateContestability(dateJoined: string | number | Date | null | undefined, collections: any[], status?: string): number {
     if (!dateJoined) return 0;
+
+    // 🔥 NEW: If status is PENDING, contestability is also PENDING (return -1 as indicator)
+    if (status === 'PENDING') return -1;
+
     if (status === 'Lapsed') return 0;
 
     // Sort collections by date (just to be safe, though usually ordered)
