@@ -148,17 +148,25 @@ export default function SOAScreen() {
 
           const rawPayments = (collections || []) as any[];
 
-          // Sort: Membership first, then by Date
+          // Sort: Adapted first, then Membership, then by Date
           rawPayments.sort((a, b) => {
             const payForA = (a.payment_for || '').toLowerCase();
-            const isMemA = a.is_membership_fee === true || payForA.includes('membership');
-
             const payForB = (b.payment_for || '').toLowerCase();
+
+            const isAdaptedA = payForA.includes('adapted');
+            const isAdaptedB = payForB.includes('adapted');
+            const isMemA = a.is_membership_fee === true || payForA.includes('membership');
             const isMemB = b.is_membership_fee === true || payForB.includes('membership');
 
+            // Adapted payments first
+            if (isAdaptedA && !isAdaptedB) return -1;
+            if (!isAdaptedA && isAdaptedB) return 1;
+
+            // Then membership payments
             if (isMemA && !isMemB) return -1;
             if (!isMemA && isMemB) return 1;
 
+            // Then by date
             return new Date(a.date_paid || 0).getTime() - new Date(b.date_paid || 0).getTime();
           });
 
